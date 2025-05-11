@@ -1,0 +1,23 @@
+{
+  "name": "Flashover78",
+  "short_name": "Flashover78",
+  "description": "Application pour les sapeurs-pompiers",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FF4500",
+  "theme_color": "#FF4500",
+  "icons": [
+    {
+      "src": "/images/logo-sapeurs-pompiers.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/logo-sapeurs-pompiers.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-color: #FF4500;
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+body {
+  @apply bg-gray-50;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+.safe-area-bottom {
+  padding-bottom: calc(var(--safe-area-bottom) + 0.5rem);
+}
+
+.nav-item-enter {
+  animation: slideUp 0.2s ease-out forwards;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(4px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.react-calendar {
+  @apply w-full border-none bg-transparent font-sans;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.react-calendar__tile--active {
+  @apply bg-[#FF4500] text-white rounded-lg;
+}
+
+.react-calendar__tile--now {
+  @apply bg-orange-100 rounded-lg;
+}
+
+.react-calendar__month-view__days__day {
+  @apply p-2.5;
+}
+
+.react-calendar__navigation button:enabled:hover,
+.react-calendar__navigation button:enabled:focus {
+  @apply bg-orange-100 rounded-lg;
+}
+
+.react-calendar__tile:enabled:hover,
+.react-calendar__tile:enabled:focus {
+  @apply bg-orange-100 rounded-lg;
+}
+
+@media (orientation: landscape) {
+  .container {
+    max-width: 1024px;
+    margin: 0 auto;
+  }
+}
+
+@media (min-width: 768px) {
+  .container {
+    max-width: 1280px;
+  }
+}
+
+@keyframes dotAppear {
+  from {
+    transform: translate(-50%, 10px) scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+.nav-dot {
+  animation: dotAppear 0.2s ease-out forwards;
+}
+
+/* Loading Spinner */
+.loading-spinner {
+  @apply inline-block w-8 h-8 border-4 border-gray-300 border-t-[#FF4500] rounded-full animate-spin;
+}
+
+/* PWA Styles */
+@media (display-mode: standalone) {
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+  
+  .safe-area-left {
+    padding-left: env(safe-area-inset-left, 0);
+  }
+  
+  .safe-area-right {
+    padding-right: env(safe-area-inset-right, 0);
+  }
+}
+
+/* Desktop specific styles */
+@media (min-width: 1024px) {
+  .desktop-nav {
+    @apply w-64 h-screen fixed left-0 top-0 border-r border-gray-200 shadow-sm;
+  }
+  
+  .desktop-main {
+    @apply ml-64;
+  }
+}
+
+/* Improved responsiveness for forms */
+@screen md {
+  .form-container {
+    @apply max-w-xl mx-auto;
+  }
+}
+
+/* Improved focus states for accessibility */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  @apply outline-none ring-2 ring-[#FF4500] ring-offset-2;
+}
+
+/* Add smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Modal transitions */
+.modal-enter {
+  animation: modal-fade-in 0.2s ease-out forwards;
+}
+
+.modal-exit {
+  animation: modal-fade-out 0.2s ease-in forwards;
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes modal-fade-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.95); }
+}
