@@ -1,12 +1,12 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Moon, Sun, Mail, Key, Shield } from 'lucide-react';
+import { ArrowLeft, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Settings() {
   const navigate = useNavigate();
   const { isDarkMode, toggleDarkMode } = useTheme();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   return (
     <div className="space-y-4">
@@ -69,17 +69,11 @@ export default function Settings() {
               </div>
               
               <div className="space-y-2">
-                <button className="w-full flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                  <Mail size={18} className="mr-3" />
-                  Modifier l'email
-                </button>
-                <button className="w-full flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                  <Key size={18} className="mr-3" />
-                  Changer le mot de passe
-                </button>
-                <button className="w-full flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                  <Shield size={18} className="mr-3" />
-                  Sécurité du compte
+                <button
+                  className="w-full flex items-center px-4 py-2 text-sm text-white bg-[#FF4500] hover:bg-[#FF4500]/90 rounded-lg transition-colors justify-center"
+                  onClick={async () => { if (window.confirm('Voulez-vous vous déconnecter ?')) await logout(); }}
+                >
+                  Se déconnecter
                 </button>
               </div>
             </div>

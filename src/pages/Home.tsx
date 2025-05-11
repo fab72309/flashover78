@@ -87,6 +87,10 @@ function Home() {
           />
         )}
       </div>
+      {/* Numéro de version */}
+      <div className="w-full flex justify-center mt-10">
+        <span className="text-xs text-gray-400 text-center">v0.1.1-alpha</span>
+      </div>
     </div>
   );
 }

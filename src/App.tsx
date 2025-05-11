@@ -11,6 +11,7 @@ import BrulageMlb from './pages/BrulageMlb';
 import Resources from './pages/Resources';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
+import Login from './pages/Login';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
 
@@ -22,6 +23,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Layout />}>
               <Route index element={<Home />} />
+              <Route path="login" element={<Login />} />
               <Route path="news">
                 <Route index element={<News />} />
                 <Route path="add" element={<AddNews />} />
