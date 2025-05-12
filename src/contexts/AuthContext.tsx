@@ -7,10 +7,9 @@ import {
   getRedirectResult,
   signOut, 
   onAuthStateChanged, 
-  setPersistence,
-  browserLocalPersistence,
   User,
-  AuthError 
+  AuthError,
+  updateProfile
 } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
@@ -138,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await createUserWithEmailAndPassword(auth, email, password);
       if (result.user) {
         // Mettre à jour le profil de l'utilisateur avec son nom complet
-        await result.user.updateProfile({
+        await updateProfile(result.user, {
           displayName: `${firstName} ${lastName}`
         });
         
@@ -155,10 +154,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       const authError = error as AuthError;
-      if (authError.code === 'auth/email-already-in-use') {
-        throw new Error('Cette adresse email est déjà utilisée');
+      console.error('Erreur d\'inscription:', authError.code, authError.message);
+      
+      switch (authError.code) {
+        case 'auth/email-already-in-use':
+          throw new Error('Cette adresse email est déjà utilisée');
+        case 'auth/invalid-email':
+          throw new Error('Adresse email invalide');
+        case 'auth/weak-password':
+          throw new Error('Le mot de passe doit contenir au moins 6 caractères');
+        case 'auth/operation-not-allowed':
+          throw new Error('La création de compte est désactivée');
+        case 'auth/network-request-failed':
+          throw new Error('Problème de connexion réseau');
+        default:
+          throw new Error('Erreur lors de la création du compte');
       }
-      throw new Error('Erreur lors de la création du compte');
     }
   };
 
@@ -170,10 +181,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       const authError = error as AuthError;
-      if (authError.code === 'auth/wrong-password' || authError.code === 'auth/user-not-found') {
-        throw new Error('Email ou mot de passe incorrect');
+      console.error('Erreur de connexion:', authError.code, authError.message);
+      
+      switch (authError.code) {
+        case 'auth/wrong-password':
+        case 'auth/user-not-found':
+          throw new Error('Email ou mot de passe incorrect');
+        case 'auth/invalid-email':
+          throw new Error('Format d\'email invalide');
+        case 'auth/user-disabled':
+          throw new Error('Ce compte a été désactivé');
+        case 'auth/too-many-requests':
+          throw new Error('Trop de tentatives, veuillez réessayer plus tard');
+        case 'auth/network-request-failed':
+          throw new Error('Problème de connexion réseau');
+        default:
+          throw new Error('Erreur de connexion');
       }
-      throw new Error('Erreur de connexion');
     }
   };
 
