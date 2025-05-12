@@ -52,25 +52,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      if (user && !user.isAnonymous) {
-        createUserDocument(user);
-      }
-    });
-
-    // Check for redirect result when the component mounts
+    // Gestion du retour de redirection Google
     getRedirectResult(auth)
       .then((result) => {
+        console.log('[DEBUG] Résultat getRedirectResult:', result);
         if (result?.user && !result.user.isAnonymous) {
           console.log("Connexion Google réussie:", result.user.displayName);
           setUser(result.user);
           createUserDocument(result.user);
+        } else {
+          console.log('[DEBUG] Aucun utilisateur dans getRedirectResult');
         }
       })
       .catch((error) => {
-        console.error("Erreur de redirection:", error);
-        
+        console.error('[DEBUG] Erreur getRedirectResult:', error);
         if (error.code === 'auth/unauthorized-domain') {
           const currentDomain = window.location.hostname;
           alert(`Le domaine "${currentDomain}" n'est pas autorisé dans la console Firebase. Veuillez l'ajouter dans les paramètres d'authentification.`);
@@ -87,6 +82,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => {
         setLoading(false);
       });
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      if (user && !user.isAnonymous) {
+        createUserDocument(user);
+      }
+    });
 
     return unsubscribe;
   }, []);
