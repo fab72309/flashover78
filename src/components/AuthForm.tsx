@@ -12,7 +12,7 @@ export default function AuthForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
-  const { signInWithEmail, signUpWithEmail, signInWithGoogleRedirect } = useAuth();
+  const { signInWithEmail, signUpWithEmail } = useAuth(); // Google Auth retiré temporairement
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,17 +44,7 @@ export default function AuthForm() {
     }
   };
 
-  const handleGoogleSignIn = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setError(null);
-    try {
-      console.log('Tentative de connexion avec Google...');
-      signInWithGoogleRedirect();
-    } catch (err) {
-      console.error('Google sign-in error:', err);
-      setError('Erreur lors de la connexion avec Google');
-    }
-  };
+  // TODO: Ajouter ici le handler Google Sign-In lors de la réintégration future.
 
   return (
     <div className="w-full max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
@@ -175,6 +165,7 @@ export default function AuthForm() {
         </button>
       </div>
 
+      {/*
       <div className="mt-6">
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
@@ -184,10 +175,10 @@ export default function AuthForm() {
             <span className="px-2 bg-white text-gray-500">Ou continuer avec</span>
           </div>
         </div>
-
         <button
-          onClick={handleGoogleSignIn}
-          className="mt-4 w-full flex items-center justify-center gap-3 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          disabled
+          className="mt-4 w-full flex items-center justify-center gap-3 px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-400 cursor-not-allowed"
+          title="Google Auth bientôt disponible"
         >
           <svg viewBox="0 0 24 24" width="20" height="20">
             <path
@@ -208,9 +199,10 @@ export default function AuthForm() {
             />
             <path fill="none" d="M1 1h22v22H1z" />
           </svg>
-          <span>Google</span>
+          <span>Google (bientôt)</span>
         </button>
       </div>
+      */}
     </div>
   );
 }
