@@ -1,40 +1,45 @@
 import { useState, useEffect } from 'react';
-import { Menu, Search } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Menu, Search, Settings, Bell } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import Sidebar from './Sidebar';
 
-function Header() {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+interface HeaderProps {
+  onMenuClick: () => void;
+}
+
+function Header({ onMenuClick }: HeaderProps) {
+  // Log pour débogage
+  console.log('[Header] onMenuClick est défini:', !!onMenuClick);
+
+  // Nous gardons uniquement le state pour l'effet de scroll
   const [isScrolled, setIsScrolled] = useState(false);
-  const { user } = useAuth();
+  const { } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   
   const titles: { [key: string]: string } = {
-    '/': 'Accueil',
-    '/news': 'News',
-    '/calendar': 'Calendrier',
-    '/brulage': 'Brulage',
-    '/resources': 'Ressources',
-    '/dashboard': 'Tableau de bord'
+    '/app': 'Accueil',
+    '/app/news': 'News',
+    '/app/calendar': 'Calendrier',
+    '/app/brulage': 'Brulage',
+    '/app/resources': 'Ressources',
+    '/app/dashboard': 'Tableau de bord',
+    '/app/settings': 'Paramètres',
+    '/app/account': 'Mon Compte'
   };
 
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
+    // Nous n'avons plus besoin de détecter la taille de l'écran car tous les boutons sont visibles
 
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 10);
     };
 
-    window.addEventListener('resize', handleResize);
+    // Nous n'avons plus besoin de l'événement resize
     window.addEventListener('scroll', handleScroll);
     
     return () => {
-      window.removeEventListener('resize', handleResize);
+      // Nettoyage simplifié
       window.removeEventListener('scroll', handleScroll);
     };
   }, []);
@@ -44,8 +49,11 @@ function Header() {
       <header className={`bg-[#FF4500] text-white p-4 flex items-center justify-between sticky top-0 z-40 ${isScrolled ? 'shadow-md' : ''} transition-shadow`}>
         <div className="flex items-center">
           <button 
-            onClick={() => setIsSidebarOpen(true)} 
-            className="p-2 hover:bg-[#ff4500]/90 rounded-lg transition-colors"
+            onClick={() => {
+              console.log('[Header] Bouton hamburger cliqué');
+              if (onMenuClick) onMenuClick();
+            }}
+            className="p-2 hover:bg-[#ff4500]/90 rounded-lg transition-colors bg-white text-[#FF4500]"
             aria-label="Menu"
           >
             <Menu size={24} />
@@ -54,22 +62,34 @@ function Header() {
         </div>
         
         <div className="flex items-center space-x-2">
-          {!isMobile && location.pathname !== '/news' && (
-            <button 
-              onClick={() => navigate('/news')}
-              className="p-2 hover:bg-[#ff4500]/90 rounded-lg transition-colors" 
-              aria-label="Rechercher"
-            >
-              <Search size={20} />
-            </button>
-          )}
+          <button 
+            onClick={() => navigate('/app/news')}
+            className="p-2 hover:bg-[#ff4500]/90 rounded-lg transition-colors" 
+            aria-label="Notifications"
+            title="Notifications"
+          >
+            <Bell size={20} />
+          </button>
+          
+          <button 
+            onClick={() => navigate('/app/search')}
+            className="p-2 hover:bg-[#ff4500]/90 rounded-lg transition-colors" 
+            aria-label="Rechercher"
+            title="Rechercher"
+          >
+            <Search size={20} />
+          </button>
+          
+          <button 
+            onClick={() => navigate('/app/settings')}
+            className="p-2 hover:bg-[#ff4500]/90 rounded-lg transition-colors" 
+            aria-label="Paramètres"
+            title="Paramètres"
+          >
+            <Settings size={20} />
+          </button>
         </div>
       </header>
-      
-      <Sidebar 
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-      />
     </>
   );
 }

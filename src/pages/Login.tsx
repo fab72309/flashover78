@@ -9,7 +9,7 @@ export default function Login() {
 
   useEffect(() => {
     if (!loading && user) {
-      navigate('/dashboard'); // Redirige si déjà connecté
+      navigate('/app/dashboard'); // Redirige si déjà connecté
     }
   }, [user, loading, navigate]);
 

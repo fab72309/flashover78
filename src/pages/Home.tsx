@@ -1,3 +1,6 @@
+// Page d'accueil
+import { useAuth } from '../contexts/AuthContext';
+
 import { useNavigate } from 'react-router-dom';
 import MenuCard from '../components/MenuCard';
 import { LOGO_PATHS } from '../utils/constants';
@@ -96,3 +99,4 @@ function Home() {
 }
 
 export default Home;
+

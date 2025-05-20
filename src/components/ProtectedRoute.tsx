@@ -29,7 +29,8 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!user) {
-    return <Navigate to="/" replace state={{ from: location }} />;
+    // Rediriger vers la page de connexion si l'utilisateur n'est pas connecté
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
   return <>{children}</>;
