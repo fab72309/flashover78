@@ -8,28 +8,28 @@ export default function Settings() {
       title: 'Compte',
       description: 'Gérez vos informations personnelles et options de connexion',
       icon: <User size={24} className="text-blue-500" />,
-      path: '/account'
+      path: '/app/account'
     },
     {
       id: 'appearance',
       title: 'Apparence',
       description: 'Personnalisez l\'apparence de l\'application',
       icon: <Moon size={24} className="text-indigo-500" />,
-      path: '/settings'
+      path: '/app/settings'
     },
     {
       id: 'notifications',
       title: 'Notifications',
       description: 'Configurez vos préférences de notifications',
       icon: <Bell size={24} className="text-amber-500" />,
-      path: '/settings'
+      path: '/app/settings'
     },
     {
       id: 'security',
       title: 'Sécurité',
       description: 'Gérez la sécurité de votre compte',
       icon: <Shield size={24} className="text-green-500" />,
-      path: '/settings'
+      path: '/app/settings'
     }
   ];
 
@@ -64,7 +64,7 @@ export default function Settings() {
       
       <div className="mt-12 bg-white rounded-lg shadow-md p-6">
         <h2 className="text-xl font-semibold mb-4">À propos</h2>
-        <p className="text-gray-600">Version de l'application: 1.0.0</p>
+        <p className="text-gray-600">Version de l'application: v0.1.2-alpha</p>
         <p className="text-gray-600 mt-2">© 2025 Flashover78. Tous droits réservés.</p>
       </div>
     </div>
