@@ -2,6 +2,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, User, Mail, Shield } from 'lucide-react';
 
+import { EmailUpdateForm, PasswordUpdateForm } from './AccountForms';
+
 export default function Account() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -71,6 +73,18 @@ export default function Account() {
             </div>
           </div>
           
+          {/* Formulaire de modification de l'email */}
+          <div className="mt-8 border-t pt-6">
+            <h3 className="font-medium mb-4">Modifier l'email</h3>
+            <EmailUpdateForm />
+          </div>
+
+          {/* Formulaire de modification du mot de passe */}
+          <div className="mt-8 border-t pt-6">
+            <h3 className="font-medium mb-4">Modifier le mot de passe</h3>
+            <PasswordUpdateForm />
+          </div>
+
           <div className="pt-6 mt-6 border-t">
             <h3 className="font-medium mb-4">Actions du compte</h3>
             <button
