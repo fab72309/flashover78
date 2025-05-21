@@ -1,13 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Calendar from 'react-calendar';
-import { ChevronLeft, ChevronRight, Search, Plus, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Plus } from 'lucide-react';
 import { useCollection } from '../hooks/useFirestore';
 import { CalendarEvent } from '../types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import 'react-calendar/dist/Calendar.css';
-import { Clock, MapPin, Users } from 'lucide-react';
 
 type ValuePiece = Date | null;
 type Value = ValuePiece | [ValuePiece, ValuePiece];
@@ -17,53 +16,43 @@ function CalendarPage() {
   const today = new Date();
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const { documents: events, loading } = useCollection<CalendarEvent>('events');
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [view, setView] = useState<'month' | 'week' | 'day'>('month');
+  const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  const getNextEvent = () => {
-    if (!events.length) return null;
-    const now = new Date();
-    return events
-      .filter(event => event.date > now)
-      .sort((a, b) => a.date.getTime() - b.date.getTime())[0];
-  };
-
-  const nextEvent = getNextEvent();
-
-  const getEventsForDate = (date: Date) => {
-    const eventsForDate = events.filter(
-      event => format(event.date instanceof Date ? event.date : new Date(event.date), 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd')
+  // Filtrage des événements selon la recherche
+  const filteredEvents = events.filter(event => {
+    const query = search.toLowerCase();
+    return (
+      event.title.toLowerCase().includes(query) ||
+      (event.description && event.description.toLowerCase().includes(query)) ||
+      (event.location && event.location.toLowerCase().includes(query))
     );
-    return eventsForDate;
+  });
+
+  // Récupère les événements de la semaine courante
+  const getEventsForCurrentWeek = () => {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay() + 1); // Lundi
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6); // Dimanche
+    return filteredEvents.filter(event => {
+      const eventDate = event.date instanceof Date ? event.date : new Date(event.date);
+      return eventDate >= startOfWeek && eventDate <= endOfWeek;
+    });
   };
 
-  const tileContent = ({ date }: { date: Date }) => {
-    const eventsForDate = getEventsForDate(date);
-    const isToday = format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
-    
-    if (eventsForDate.length > 0) {
-      return (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className={`w-8 h-8 border-2 ${isToday ? 'bg-[#FF4500] border-[#FF4500]' : 'border-[#FF4500]'} rounded-full`}></div>
-        </div>
-      );
-    } else if (isToday) {
-      return (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-[#FF4500] rounded-full"></div>
-        </div>
-      );
-    }
-    return null;
+  // Récupère les événements du jour courant
+  const getEventsForToday = () => {
+    return filteredEvents.filter(event => {
+      const eventDate = event.date instanceof Date ? event.date : new Date(event.date);
+      return format(eventDate, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
+    });
+  };
+
+  // Pour la vue Mois, marqueurs filtrés
+  const getEventsForDate = (date: Date) => {
+    return filteredEvents.filter(event => format(event.date instanceof Date ? event.date : new Date(event.date), 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'));
   };
 
   const handleDateClick = (value: Value) => {
@@ -101,14 +90,15 @@ function CalendarPage() {
             Mois
           </button>
         </div>
-        
         <div className="relative">
           <input
             type="text"
             placeholder="Rechercher un événement"
             className="w-full p-2 pl-9 bg-gray-50 rounded-lg text-sm mb-3"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
           />
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
         </div>
       </div>
 
@@ -118,122 +108,121 @@ function CalendarPage() {
         </div>
       ) : (
         <div className="bg-white rounded-lg p-2 shadow-sm">
-          <Calendar
-            onClickDay={handleDateClick}
-            value={today}
-            prevLabel={<ChevronLeft className="text-[#FF4500]" size={18} />}
-            nextLabel={<ChevronRight className="text-[#FF4500]" size={18} />}
-            className="w-full border-none"
-            tileClassName={({ date }) => {
-              const hasEvents = getEventsForDate(date).length > 0;
-              const isSelected = selectedDate && format(date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
-              const isToday = format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
-              return `rounded-lg relative ${
-                isSelected ? 'bg-[#FF4500] text-white' : 
-                isToday ? 'text-[#FF4500] font-bold' :
-                hasEvents ? 'hover:bg-orange-100' : 
-                'hover:bg-gray-100'
-              }`;
-            }}
-            tileContent={tileContent}
-            navigationLabel={({ date }) => 
-              format(date, 'MMMM yyyy', { locale: fr })
-            }
-          />
-        </div>
-      )}
-      
-      {nextEvent && (
-        <div className="bg-white rounded-lg p-3 shadow-sm border-l-4 border-[#FF4500]">
-          <h2 className="text-sm font-semibold mb-1.5 underline">Prochaine formation :</h2>
-          <div className="space-y-2">
-            <h3 className="text-sm font-bold text-[#FF4500]">{nextEvent.title}</h3>
-            <p className="text-xs text-gray-600">{nextEvent.description}</p>
-            <div className="flex items-center gap-1.5 text-gray-500 text-xs">
-              <Clock size={14} />
-              <span>{format(nextEvent.date, "d MMMM yyyy 'à' HH:mm", { locale: fr })}</span>
-            </div>
-            {nextEvent.location && (
-              <div className="flex items-center gap-1.5 text-gray-500 text-xs">
-                <MapPin size={14} />
-                <span>{nextEvent.location}</span>
-              </div>
-            )}
-            {nextEvent.formateurs && nextEvent.formateurs.length > 0 && (
-              <div className="flex items-center gap-1.5 text-gray-500 text-xs">
-                <Users size={14} />
-                <span>{nextEvent.formateurs.join(', ')}</span>
-              </div>
+          {view === 'month' && (
+            <Calendar
+              onClickDay={handleDateClick}
+              value={today}
+              prevLabel={<ChevronLeft className="text-[#FF4500]" size={18} />}
+              nextLabel={<ChevronRight className="text-[#FF4500]" size={18} />}
+              className="w-full border-none"
+              tileClassName={({ date }) => {
+                const hasEvents = getEventsForDate(date).length > 0;
+                const isSelected = selectedDate && format(date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
+                const isToday = format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
+                return `rounded-lg relative ${
+                  isSelected ? 'bg-[#FF4500] text-white' : 
+                  isToday ? 'text-[#FF4500] font-bold' :
+                  hasEvents ? 'hover:bg-orange-100' : 
+                  'hover:bg-gray-100'
+                }`;
+              }}
+              tileContent={({ date }) => {
+                const eventsForDate = getEventsForDate(date);
+                const isToday = format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
+                if (eventsForDate.length > 0) {
+                  return (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className={`w-8 h-8 border-2 ${isToday ? 'bg-[#FF4500] border-[#FF4500]' : 'border-[#FF4500]'} rounded-full`}></div>
+                    </div>
+                  );
+                } else if (isToday) {
+                  return (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-8 h-8 border-2 border-[#FF4500] rounded-full"></div>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+              navigationLabel={({ date }) => format(date, 'MMMM yyyy', { locale: fr })}
+            />
+          )}
+
+          {view === 'week' && (
+  <div className="w-full">
+    <h3 className="text-md font-semibold mb-2">Semaine en cours</h3>
+    <div className="grid grid-cols-7 gap-2 bg-gray-50 rounded-lg overflow-hidden">
+      {/* Header: Days of the week */}
+      {[...Array(7)].map((_, i) => {
+        const date = new Date();
+        const monday = new Date(date.setDate(date.getDate() - date.getDay() + 1));
+        const day = new Date(monday);
+        day.setDate(monday.getDate() + i);
+        return (
+          <div key={i} className="p-2 text-center font-semibold bg-white border-b border-gray-200">
+            {format(day, 'EEE dd/MM', { locale: fr })}
+          </div>
+        );
+      })}
+      {/* Events per day */}
+      {[...Array(7)].map((_, i) => {
+        const date = new Date();
+        const monday = new Date(date.setDate(date.getDate() - date.getDay() + 1));
+        const day = new Date(monday);
+        day.setDate(monday.getDate() + i);
+        const events = getEventsForCurrentWeek().filter(event => {
+          const eventDate = event.date instanceof Date ? event.date : new Date(event.date);
+          return format(eventDate, 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd');
+        });
+        return (
+          <div key={i} className="min-h-[100px] bg-white border-r border-gray-200 p-2">
+            {events.length > 0 ? (
+              events.map(event => (
+                <div key={event.id} className="mb-2 p-2 rounded bg-[#FF4500]/10">
+                  <div className="font-medium text-[#FF4500]">{event.title}</div>
+                  <div className="text-xs text-gray-500">{format(event.date instanceof Date ? event.date : new Date(event.date), 'HH:mm', { locale: fr })} - {event.location}</div>
+                </div>
+              ))
+            ) : (
+              <div className="text-xs text-gray-400 text-center">Aucun événement</div>
             )}
           </div>
+        );
+      })}
+    </div>
+  </div>
+)}
+
+          {view === 'day' && (
+  <div className="w-full">
+    <h3 className="text-md font-semibold mb-2">Aujourd'hui</h3>
+    <div className="grid grid-cols-1 divide-y divide-gray-200 bg-gray-50 rounded-lg overflow-hidden">
+      {[...Array(24)].map((_, hour) => {
+        const events = getEventsForToday().filter(event => {
+          const eventDate = event.date instanceof Date ? event.date : new Date(event.date);
+          return new Date(eventDate).getHours() === hour;
+        });
+        return (
+          <div key={hour} className="flex flex-col p-2 min-h-[40px]">
+            <div className="text-xs font-semibold text-gray-500 mb-1">{hour.toString().padStart(2, '0')}:00</div>
+            {events.length > 0 ? (
+              events.map(event => (
+                <div key={event.id} className="mb-1 p-2 rounded bg-[#FF4500]/10">
+                  <div className="font-medium text-[#FF4500]">{event.title}</div>
+                  <div className="text-xs text-gray-500">{event.location}</div>
+                </div>
+              ))
+            ) : (
+              <div className="text-xs text-gray-400">—</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  </div>
+)}
         </div>
       )}
-
-      {/* Return to Home Button */}
-      <button
-        onClick={() => navigate('/')}
-        className="w-full bg-white text-[#FF4500] py-4 rounded-lg mt-6 mb-4 flex items-center justify-center font-semibold border-2 border-[#FF4500] hover:bg-[#FF4500] hover:text-white transition-colors shadow-lg"
-      >
-        Retour à l'accueil
-      </button>
-
-      {/* Event Details Popup */}
-      {selectedDate && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg w-full max-w-lg max-h-[80vh] overflow-y-auto">
-             <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-white">
-               <h2 className="text-lg font-semibold">
-                 {format(selectedDate, 'dd MMMM yyyy', { locale: fr })}
-               </h2>
-               <button
-                 onClick={() => setSelectedDate(null)}
-                 className="p-2 hover:bg-gray-100 rounded-full"
-                 aria-label="Fermer"
-               >
-                 <X size={20} className="text-gray-500" />
-               </button>
-             </div>
-             <div className="p-4 space-y-4">
-               {getEventsForDate(selectedDate).map(event => (
-                 <div key={event.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                   <h3 className="font-semibold text-lg">{event.title}</h3>
-                   <p className="text-gray-600 mt-2">{event.description}</p>
-                   <div className="flex items-center justify-between mt-2 text-gray-500">
-                     <div className="flex items-center gap-2">
-                       <Clock size={16} />
-                       <span>{format(event.date instanceof Date ? event.date : new Date(event.date), "HH:mm", { locale: fr })}</span>
-                     </div>
-                     {event.location && (
-                       <div className="flex items-center gap-2">
-                         <MapPin size={16} />
-                         <span>{event.location}</span>
-                       </div>
-                     )}
-                   </div>
-                   {event.observations && (
-                     <p className="text-gray-600 mt-2">
-                       <span className="font-medium">Observations:</span> {event.observations}
-                     </p>
-                   )}
-                   {event.formateurs && event.formateurs.length > 0 && (
-                     <div className="mt-2">
-                       <span className="font-medium">Formateurs:</span>
-                       <ul className="list-disc list-inside">
-                         {event.formateurs.map((formateur, index) => (
-                           <li key={index} className="text-gray-600 ml-2">{formateur}</li>
-                         ))}
-                       </ul>
-                     </div>
-                   )}
-                 </div>
-               ))}
-               {getEventsForDate(selectedDate).length === 0 && (
-                 <p className="text-center text-gray-500">Aucun événement pour cette date</p>
-               )}
-             </div>
-           </div>
-         </div>
-       )}
 
       {/* Floating Action Button */}
       <button 
