@@ -64,7 +64,7 @@ export default function Settings() {
       
       <div className="mt-12 bg-white rounded-lg shadow-md p-6">
         <h2 className="text-xl font-semibold mb-4">À propos</h2>
-        <p className="text-gray-600">Version de l'application: v0.1.2-alpha</p>
+        <p className="text-gray-600">Version de l'application: v0.1.3-alpha</p>
         <p className="text-gray-600 mt-2">© 2025 Flashover78. Tous droits réservés.</p>
       </div>
     </div>
