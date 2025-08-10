@@ -1,5 +1,4 @@
 // Page d'accueil
-import { useAuth } from '../contexts/AuthContext';
 
 import { useNavigate } from 'react-router-dom';
 import MenuCard from '../components/MenuCard';
@@ -92,11 +91,10 @@ function Home() {
       </div>
       {/* Numéro de version */}
       <div className="w-full flex justify-center mt-10">
-        <span className="text-xs text-gray-400 text-center">v0.1.2-alpha</span>
+        <span className="text-xs text-gray-400 text-center">v0.1.3-alpha</span>
       </div>
     </div>
   );
 }
 
 export default Home;
-

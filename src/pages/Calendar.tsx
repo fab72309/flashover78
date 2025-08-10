@@ -66,6 +66,7 @@ function CalendarPage() {
       <div className="bg-white rounded-lg shadow-sm p-2 -mx-4 px-4">
         <div className="flex justify-center space-x-2 mb-2">
           <button 
+            type="button"
             onClick={() => setView('day')}
             className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
               view === 'day' ? 'bg-[#FF4500] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -74,6 +75,7 @@ function CalendarPage() {
             Jour
           </button>
           <button 
+            type="button"
             onClick={() => setView('week')}
             className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
               view === 'week' ? 'bg-[#FF4500] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -82,6 +84,7 @@ function CalendarPage() {
             Semaine
           </button>
           <button 
+            type="button"
             onClick={() => setView('month')}
             className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
               view === 'month' ? 'bg-[#FF4500] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
