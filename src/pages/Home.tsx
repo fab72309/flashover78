@@ -10,6 +10,8 @@ function Home() {
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const { isDarkMode } = useTheme();
+  // Version de l'application injectée au build via Vite (voir VITE_APP_VERSION)
+  const appVersion = (import.meta as any).env?.VITE_APP_VERSION || 'dev';
 
   useEffect(() => {
     const handleResize = () => {
@@ -91,7 +93,7 @@ function Home() {
       </div>
       {/* Numéro de version */}
       <div className="w-full flex justify-center mt-10">
-        <span className="text-xs text-gray-400 text-center">v0.1.5-alpha</span>
+        <span className="text-xs text-gray-400 text-center">v{appVersion}</span>
       </div>
     </div>
   );

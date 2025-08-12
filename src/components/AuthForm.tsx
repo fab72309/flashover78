@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Mail, Lock, AlertCircle, User } from 'lucide-react';
+import { useAppVersion } from '../hooks/useAppVersion';
 
 export default function AuthForm() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -203,6 +204,10 @@ export default function AuthForm() {
         </button>
       </div>
       */}
+      {/* Version de l'application */}
+      <div className="mt-8 pt-4 border-t border-gray-100 text-center">
+        <span className="text-xs text-gray-400">Version {useAppVersion()}</span>
+      </div>
     </div>
   );
 }

@@ -11,11 +11,30 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # fetch all history and tags for version detection
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 18
+
+      - name: Compute app version
+        shell: bash
+        run: |
+          echo "GITHUB_REF_TYPE=${GITHUB_REF_TYPE}"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "VITE_APP_VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+          else
+            TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            SHA=$(git rev-parse --short=7 HEAD)
+            if [ -n "$TAG" ]; then
+              echo "VITE_APP_VERSION=${TAG}+${SHA}" >> $GITHUB_ENV
+            else
+              echo "VITE_APP_VERSION=${SHA}" >> $GITHUB_ENV
+            fi
+          fi
+          echo "Resolved version: $(cat $GITHUB_ENV | grep VITE_APP_VERSION | cut -d'=' -f2)"
 
       - name: Install dependencies
         run: npm install

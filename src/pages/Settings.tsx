@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { User, Bell, Shield, Moon, LogOut } from 'lucide-react';
+import { useAppVersion } from '../hooks/useAppVersion';
 
 export default function Settings() {
   const settingsCategories = [
@@ -33,6 +34,8 @@ export default function Settings() {
     }
   ];
 
+  const appVersion = useAppVersion();
+  
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-2">Paramètres</h1>
@@ -64,7 +67,7 @@ export default function Settings() {
       
       <div className="mt-12 bg-white rounded-lg shadow-md p-6">
         <h2 className="text-xl font-semibold mb-4">À propos</h2>
-        <p className="text-gray-600">Version de l'application: v0.1.3-alpha</p>
+        <p className="text-gray-600">Version de l'application: v{appVersion}</p>
         <p className="text-gray-600 mt-2">© 2025 Flashover78. Tous droits réservés.</p>
       </div>
     </div>
