@@ -70,7 +70,7 @@ export default function Settings() {
 
       <div className="mt-6 surface-card p-5">
         <h2 className="text-headline-md text-on-surface mb-3">À propos</h2>
-        <p className="text-body-md text-on-surface-variant">Version de l'application: v{appVersion}</p>
+        <p className="text-body-md text-on-surface-variant">Version de l'application: {appVersion}</p>
         <p className="text-body-md text-on-surface-variant mt-1">&copy; 2025 Flashover78. Tous droits réservés.</p>
       </div>
 

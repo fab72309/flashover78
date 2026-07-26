@@ -3,8 +3,13 @@
  * @returns La version de l'application (ex: "v1.0.0" ou "dev" en local)
  */
 export const useAppVersion = (): string => {
-  // VITE_APP_VERSION est injecté au build via GitHub Actions
-  return import.meta.env.VITE_APP_VERSION || 'dev';
+  const version = import.meta.env.VITE_APP_VERSION;
+
+  if (!version) {
+    return 'dev';
+  }
+
+  return version.startsWith('v') ? version : `v${version}`;
 };
 
 export default useAppVersion;
