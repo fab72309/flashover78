@@ -24,6 +24,7 @@ const AddResource = lazy(() => import('./pages/AddResource'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Account = lazy(() => import('./pages/Account'));
+const AdminUsers = lazy(() => import('./pages/AdminUsers'));
 const Login = lazy(() => import('./pages/Login'));
 const Carpool = lazy(() => import('./pages/Carpool'));
 const CarpoolTripDetail = lazy(() => import('./pages/CarpoolTripDetail'));
@@ -89,6 +90,7 @@ function App() {
                   <Route path="resources/document/:id" element={<DocumentDetail />} />
                   <Route path="dashboard" element={<Dashboard />} />
                   <Route path="settings" element={<Settings />} />
+                  <Route path="settings/users" element={<AdminUsers />} />
                   <Route path="account" element={<Account />} />
                   <Route path="carpool" element={<Carpool />} />
                   <Route path="carpool/:id" element={<CarpoolTripDetail />} />

@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Mail, Lock, AlertCircle, User } from 'lucide-react';
 import { useAppVersion } from '../hooks/useAppVersion';
 import { LOGO_PATHS } from '../utils/constants';
+import { getRememberSessionPreference } from '../lib/supabase';
 
 export default function AuthForm() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -11,7 +12,11 @@ export default function AuthForm() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [rememberSession, setRememberSession] = useState(
+    () => getRememberSessionPreference() ?? false
+  );
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const { signInWithEmail, signUpWithEmail } = useAuth();
@@ -20,6 +25,7 @@ export default function AuthForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     setLoading(true);
 
     if (isSignUp && password !== confirmPassword) {
@@ -36,9 +42,17 @@ export default function AuthForm() {
 
     try {
       if (isSignUp) {
-        await signUpWithEmail(email, password, firstName, lastName);
+        const signUpResult = await signUpWithEmail(email, password, firstName, lastName);
+
+        if (signUpResult.requiresEmailConfirmation) {
+          setNotice('Compte créé. Vérifiez votre email, confirmez votre adresse, puis revenez vous connecter.');
+          setIsSignUp(false);
+          setPassword('');
+          setConfirmPassword('');
+          return;
+        }
       } else {
-        await signInWithEmail(email, password);
+        await signInWithEmail(email, password, rememberSession);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue');
@@ -68,6 +82,12 @@ export default function AuthForm() {
         <div className="mb-4 p-3 bg-red-50 rounded-squircle-sm flex items-start gap-2 text-red-700">
           <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
           <span className="text-body-md">{error}</span>
+        </div>
+      )}
+
+      {notice && (
+        <div className="mb-4 p-3 bg-emerald-50 rounded-squircle-sm text-emerald-700">
+          <span className="text-body-md">{notice}</span>
         </div>
       )}
 
@@ -106,6 +126,18 @@ export default function AuthForm() {
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={18} />
           </div>
         </div>
+
+        {!isSignUp && (
+          <label className="flex items-center gap-3 rounded-squircle-sm bg-surface-container p-3">
+            <input
+              type="checkbox"
+              checked={rememberSession}
+              onChange={(event) => setRememberSession(event.target.checked)}
+              className="h-4 w-4 rounded border-outline text-primary focus:ring-primary/30"
+            />
+            <span className="text-body-md text-on-surface">Rester connecté sur cet appareil</span>
+          </label>
+        )}
 
         {isSignUp && (
           <div>

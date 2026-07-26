@@ -4,9 +4,14 @@ const isLocalPreviewHost =
   typeof window !== 'undefined' &&
   ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
+const isTestEnvironment = import.meta.env.MODE === 'test';
+
 export const isDevAuthBypassEnabled =
-  String(import.meta.env.VITE_DEV_AUTH_BYPASS || 'false') === 'true' &&
-  (import.meta.env.DEV || isLocalPreviewHost);
+  isTestEnvironment ||
+  (
+    String(import.meta.env.VITE_DEV_AUTH_BYPASS || 'false') === 'true' &&
+    (import.meta.env.DEV || isLocalPreviewHost)
+  );
 
 const devUserDisplayName = import.meta.env.VITE_DEV_USER_NAME || 'Mode Dev';
 const [devFirstName = 'Mode', ...devLastNameParts] = devUserDisplayName.split(' ');

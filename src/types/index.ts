@@ -34,6 +34,18 @@ export interface Profile {
   createdAt: Date;
 }
 
+export interface ManagedUser {
+  id: string;
+  email: string;
+  displayName: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  isAdmin: boolean;
+  createdAt?: Date | null;
+  lastSignInAt?: Date | null;
+  emailConfirmedAt?: Date | null;
+}
+
 export interface CalendarEvent {
   id: string;
   title: string;
