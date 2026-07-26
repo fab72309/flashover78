@@ -1,46 +1,97 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
-import BrulageInterior from './BrulageInterior';
-import { useState } from 'react';
+import { ArrowLeft, ChevronRight, FileText } from 'lucide-react';
+import LoadingSpinner from '../components/LoadingSpinner';
+import DocumentUploadPanel from '../components/DocumentUploadPanel';
+import { useAuth } from '../contexts/AuthContext';
+import { searchDocuments } from '../services/supabaseService';
+import { APP_ROUTES } from '../utils/constants';
+import type { Resource } from '../types';
 
 export default function BrulageMlb() {
   const navigate = useNavigate();
-  const [showInterior, setShowInterior] = useState(false);
+  const { user } = useAuth();
+  const [files, setFiles] = useState<Resource[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (showInterior) {
-    return <BrulageInterior onBack={() => setShowInterior(false)} />;
-  }
+  const loadFiles = async () => {
+    setLoading(true);
+    try {
+      const filesList = await searchDocuments({ category: 'BRULAGE_TDL_FO' });
+      setFiles(filesList);
+      setError(null);
+    } catch (err) {
+      console.error(err);
+      setError('Erreur lors du chargement des fichiers');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadFiles();
+  }, []);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center mb-6">
+    <div className="space-y-4 fade-in">
+      <div className="flex items-center mb-4">
         <button
-          onClick={() => navigate('/brulage')}
-          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+          onClick={() => navigate(APP_ROUTES.BRULAGE)}
+          className="p-2 hover:bg-surface-container rounded-squircle-sm transition-colors"
         >
-          <ArrowLeft size={24} className="text-gray-600 dark:text-gray-300" />
+          <ArrowLeft size={22} className="text-on-surface-variant" />
         </button>
-        <h1 className="text-xl font-semibold ml-2 dark:text-white">Brûlage MLB</h1>
+        <h1 className="text-headline-md text-on-surface ml-2">Brûlage TDL / FO</h1>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
-        <button
-          onClick={() => setShowInterior(true)}
-          className="w-full bg-[#FF4500] text-white py-4 rounded-lg flex items-center justify-center relative shadow-md transition-all hover:shadow-lg active:scale-[0.98] font-bold text-lg"
-        >
-          BRULAGE OBSERVATION ATTAQUE DE L'INTÉRIEUR
-        </button>
-        
-        <button
-          className="w-full bg-[#FF4500] text-white py-4 rounded-lg flex items-center justify-center relative shadow-md transition-all hover:shadow-lg active:scale-[0.98] font-bold text-lg"
-        >
-          BRULAGE OBSERVATION ATTAQUE DE L'EXTÉRIEUR
-        </button>
-      </div>
+      {loading ? (
+        <div className="flex justify-center items-center py-12">
+          <LoadingSpinner />
+        </div>
+      ) : error ? (
+        <div className="text-center py-8 text-red-500">{error}</div>
+      ) : (
+        <div className="grid gap-3">
+          {files.map((file) => (
+            <button
+              type="button"
+              key={file.id}
+              onClick={() => navigate(`${APP_ROUTES.RESOURCE_DETAIL}/${file.id}`)}
+              className="flex w-full items-center p-4 text-left surface-card hover:shadow-ambient transition-shadow"
+            >
+              <FileText className="w-5 h-5 text-primary mr-3 flex-shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-body-lg font-semibold text-on-surface">
+                  {file.title}
+                </span>
+                <span className="mt-1 block text-label-sm text-on-surface-variant">
+                  Version {file.versionLabel}
+                </span>
+              </span>
+              <ChevronRight size={18} className="text-on-surface-variant" />
+            </button>
+          ))}
+          {files.length === 0 && (
+            <p className="text-center text-on-surface-variant py-8">
+              Aucun fichier disponible
+            </p>
+          )}
+        </div>
+      )}
+
+      {user?.isAdmin && (
+        <DocumentUploadPanel
+          label="un document TDL / FO"
+          defaultCategory="BRULAGE_TDL_FO"
+          lockCategory
+          onUploaded={loadFiles}
+        />
+      )}
 
       <button
-        onClick={() => navigate('/brulage')}
-        className="w-full bg-white dark:bg-gray-800 text-[#FF4500] py-4 rounded-lg mt-auto mb-4 flex items-center justify-center font-semibold border-2 border-[#FF4500] hover:bg-[#FF4500] hover:text-white dark:hover:bg-[#FF4500] transition-colors shadow-lg"
+        onClick={() => navigate(APP_ROUTES.BRULAGE)}
+        className="w-full bg-surface-container-lowest text-primary py-4 rounded-squircle mt-6 mb-4 flex items-center justify-center font-semibold hover:bg-surface-container transition-colors shadow-ambient-sm"
       >
         Retour au brûlage
       </button>

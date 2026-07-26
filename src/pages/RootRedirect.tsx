@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { APP_ROUTES } from '../utils/constants';
 
 export default function RootRedirect() {
   const { user, loading } = useAuth();
@@ -10,9 +11,9 @@ export default function RootRedirect() {
   useEffect(() => {
     if (loading) return;
     if (user) {
-      navigate('/app', { replace: true });
+      navigate(APP_ROUTES.HOME, { replace: true });
     } else {
-      navigate('/login', { replace: true, state: { from: location } });
+      navigate(APP_ROUTES.LOGIN, { replace: true, state: { from: location } });
     }
   }, [user, loading, navigate, location]);
 

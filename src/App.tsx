@@ -1,123 +1,103 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import RootRedirect from './pages/RootRedirect';
-import Layout from './components/Layout';
-import AuthLayout from './components/AuthLayout';
-import Home from './pages/Home';
-import News from './pages/News';
-import NewsDetail from './pages/NewsDetail';
-import AddNews from './pages/AddNews';
-import Calendar from './pages/Calendar';
-import AddEvent from './pages/AddEvent';
-import Brulage from './pages/Brulage';
-import BrulageMlb from './pages/BrulageMlb';
-import Resources from './pages/Resources';
-import Dashboard from './pages/Dashboard';
-import Settings from './pages/Settings';
-import Account from './pages/Account';
-import Login from './pages/Login';
+import { lazy, Suspense } from 'react';
+import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { ToastProvider } from './contexts/ToastContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import SupabaseConfigNotice from './components/SupabaseConfigNotice';
+import LoadingSpinner from './components/LoadingSpinner';
+import { APP_ROUTES } from './utils/constants';
+import { isSupabaseConfigured } from './lib/supabase';
+import { isDevAuthBypassEnabled } from './utils/devAuth';
+
+const RootRedirect = lazy(() => import('./pages/RootRedirect'));
+const Layout = lazy(() => import('./components/Layout'));
+const AuthLayout = lazy(() => import('./components/AuthLayout'));
+const Home = lazy(() => import('./pages/Home'));
+const Calendar = lazy(() => import('./pages/Calendar'));
+const AddEvent = lazy(() => import('./pages/AddEvent'));
+const Brulage = lazy(() => import('./pages/Brulage'));
+const BrulageMlb = lazy(() => import('./pages/BrulageMlb'));
+const BrulageMaf = lazy(() => import('./pages/BrulageMaf'));
+const Resources = lazy(() => import('./pages/Resources'));
+const AddResource = lazy(() => import('./pages/AddResource'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Account = lazy(() => import('./pages/Account'));
+const Login = lazy(() => import('./pages/Login'));
+const Carpool = lazy(() => import('./pages/Carpool'));
+const CarpoolTripDetail = lazy(() => import('./pages/CarpoolTripDetail'));
+const TrainingSessionDetail = lazy(() => import('./pages/TrainingSessionDetail'));
+const DocumentDetail = lazy(() => import('./pages/DocumentDetail'));
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center">
+      <LoadingSpinner />
+    </div>
+  );
+}
 
 function App() {
+  if (!isSupabaseConfigured && !isDevAuthBypassEnabled) {
+    return (
+      <ThemeProvider>
+        <SupabaseConfigNotice />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <Router>
-          <Routes>
-            {/* Routes d'authentification - sans sidebar ni navigation */}
-            <Route path="/" element={<RootRedirect />} />
-            <Route path="/login" element={<AuthLayout />}>
-              <Route index element={<Login />} />
-            </Route>
-            {/* Redirections des anciennes routes vers les nouvelles */}
-            <Route path="/accueil" element={<Navigate to="/app" replace />} />
-            <Route path="/news" element={<Navigate to="/app/news" replace />} />
-            <Route path="/calendar" element={<Navigate to="/app/calendar" replace />} />
-            <Route path="/brulage" element={<Navigate to="/app/brulage" replace />} />
-            <Route path="/resources" element={<Navigate to="/app/resources" replace />} />
-            <Route path="/dashboard" element={<Navigate to="/app/dashboard" replace />} />
-            <Route path="/settings" element={<Navigate to="/app/settings" replace />} />
-            
-            {/* Routes protégées avec layout principal */}
-            <Route path="/app" element={<Layout />}>
-              
-              {/* Route par défaut - affiche la page d'accueil */}
-              <Route index element={
-                <ProtectedRoute>
-                  <Home />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="news">
-                <Route index element={
-                  <ProtectedRoute>
-                    <News />
-                  </ProtectedRoute>
-                } />
-                <Route path="add" element={
-                  <ProtectedRoute>
-                    <AddNews />
-                  </ProtectedRoute>
-                } />
-                <Route path=":id" element={
-                  <ProtectedRoute>
-                    <NewsDetail />
-                  </ProtectedRoute>
-                } />
-              </Route>
-              
-              <Route path="calendar" element={
-                <ProtectedRoute>
-                  <Calendar />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="calendar/add" element={
-                <ProtectedRoute>
-                  <AddEvent />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="brulage" element={
-                <ProtectedRoute>
-                  <Brulage />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="brulage/mlb" element={
-                <ProtectedRoute>
-                  <BrulageMlb />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="resources" element={
-                <ProtectedRoute>
-                  <Resources />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="dashboard" element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="settings" element={
-                <ProtectedRoute>
-                  <Settings />
-                </ProtectedRoute>
-              } />
-              
-              <Route path="account" element={
-                <ProtectedRoute>
-                  <Account />
-                </ProtectedRoute>
-              } />
-            </Route>
-          </Routes>
-        </Router>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <Router>
+            <Suspense fallback={<RouteFallback />}>
+              <Routes>
+                <Route path="/" element={<RootRedirect />} />
+                <Route path={APP_ROUTES.LOGIN} element={<AuthLayout />}>
+                  <Route index element={<Login />} />
+                </Route>
+
+                <Route path="/accueil" element={<Navigate to={APP_ROUTES.HOME} replace />} />
+                <Route path="/calendar" element={<Navigate to={APP_ROUTES.CALENDAR} replace />} />
+                <Route path="/calendar/add" element={<Navigate to={APP_ROUTES.CALENDAR_ADD} replace />} />
+                <Route path="/brulage" element={<Navigate to={APP_ROUTES.BRULAGE} replace />} />
+                <Route path="/brulage/mlb" element={<Navigate to={APP_ROUTES.BRULAGE_MLB} replace />} />
+                <Route path="/resources" element={<Navigate to={APP_ROUTES.RESOURCES} replace />} />
+                <Route path="/dashboard" element={<Navigate to={APP_ROUTES.DASHBOARD} replace />} />
+                <Route path="/settings" element={<Navigate to={APP_ROUTES.SETTINGS} replace />} />
+                <Route path="/carpool" element={<Navigate to={APP_ROUTES.CARPOOL} replace />} />
+
+                <Route
+                  path={APP_ROUTES.HOME}
+                  element={(
+                    <ProtectedRoute>
+                      <Layout />
+                    </ProtectedRoute>
+                  )}
+                >
+                  <Route index element={<Home />} />
+                  <Route path="calendar" element={<Calendar />} />
+                  <Route path="calendar/add" element={<AddEvent />} />
+                  <Route path="calendar/session/:id" element={<TrainingSessionDetail />} />
+                  <Route path="brulage" element={<Brulage />} />
+                  <Route path="brulage/mlb" element={<BrulageMlb />} />
+                  <Route path="brulage/maf" element={<BrulageMaf />} />
+                  <Route path="resources" element={<Resources />} />
+                  <Route path="resources/add" element={<AddResource />} />
+                  <Route path="resources/document/:id" element={<DocumentDetail />} />
+                  <Route path="dashboard" element={<Dashboard />} />
+                  <Route path="settings" element={<Settings />} />
+                  <Route path="account" element={<Account />} />
+                  <Route path="carpool" element={<Carpool />} />
+                  <Route path="carpool/:id" element={<CarpoolTripDetail />} />
+                </Route>
+              </Routes>
+            </Suspense>
+          </Router>
+        </AuthProvider>
+      </ToastProvider>
     </ThemeProvider>
   );
 }

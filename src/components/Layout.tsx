@@ -2,31 +2,39 @@ import { Outlet } from 'react-router-dom';
 import Navigation from './Navigation';
 import Header from './Header';
 import Sidebar from './Sidebar';
-import { useState } from 'react';
-import { useTheme } from '../contexts/ThemeContext';
+import { type CSSProperties, useState } from 'react';
+
+const DEFAULT_SIDEBAR_WIDTH = 288;
+const COLLAPSED_SIDEBAR_WIDTH = 88;
 
 function Layout() {
-  // Simplifions notre gestion - un seul état pour le sidebar
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { isDarkMode } = useTheme();
+  const [desktopSidebarWidth, setDesktopSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
 
-  // Fonction pour ouvrir le menu
   const handleMenuClick = () => {
-    console.log('[Layout] handleMenuClick appelé, état actuel sidebar:', sidebarOpen);
     setSidebarOpen(true);
   };
 
+  const sidebarOffset = desktopSidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : desktopSidebarWidth;
+  const layoutStyle = {
+    '--sidebar-offset': `${sidebarOffset}px`,
+  } as CSSProperties;
+
   return (
-    <div className={`min-h-screen flex ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      {/* Un seul Sidebar qui s'ouvre/ferme pour toutes les tailles d'écran */}
-      <Sidebar 
-        isOpen={sidebarOpen} 
-        onClose={() => setSidebarOpen(false)} 
+    <div className="min-h-screen bg-surface text-on-surface" style={layoutStyle}>
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        desktopWidth={desktopSidebarWidth}
+        isDesktopCollapsed={desktopSidebarCollapsed}
+        onDesktopWidthChange={setDesktopSidebarWidth}
+        onDesktopCollapsedChange={setDesktopSidebarCollapsed}
       />
-      
-      <div className="flex-1 flex flex-col min-h-screen relative">
+
+      <div className="flex min-h-screen flex-col transition-[padding] duration-300 lg:pl-[var(--sidebar-offset)]">
         <Header onMenuClick={handleMenuClick} />
-        <main className="flex-1 mx-auto px-4 py-6 pb-28 transition-all w-full max-w-6xl"> 
+        <main className="mx-auto flex-1 px-4 py-5 pb-28 transition-all w-full max-w-6xl sm:px-6 lg:max-w-none lg:px-8 lg:py-8 lg:pb-10 xl:px-10">
           <Outlet />
         </main>
         <Navigation />

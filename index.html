@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/images/logo-sapeurs-pompiers.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#FF4500" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -11,8 +11,95 @@
     <link rel="manifest" href="/manifest.json" />
     <title>Flashover78</title>
     <meta name="description" content="Application web pour Sapeurs-Pompiers - Flashover78" />
+    <style>
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f9f9fb;
+        color: #1a1c1d;
+      }
+      #boot-status {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+      .boot-card {
+        width: 100%;
+        max-width: 720px;
+        background: #ffffff;
+        border-radius: 24px;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.08);
+        padding: 24px;
+      }
+      .boot-title {
+        font-size: 24px;
+        font-weight: 700;
+        margin: 0 0 12px;
+      }
+      .boot-copy {
+        margin: 0;
+        line-height: 1.5;
+        color: #6b7280;
+      }
+      .boot-error {
+        margin-top: 16px;
+        white-space: pre-wrap;
+        background: #fff1f2;
+        color: #9f1239;
+        border-radius: 16px;
+        padding: 16px;
+        font-size: 14px;
+      }
+    </style>
+    <script>
+      function showBootError(copy, message) {
+        var root = document.getElementById('boot-status');
+        if (!root) return;
+
+        var card = document.createElement('div');
+        card.className = 'boot-card';
+
+        var title = document.createElement('h1');
+        title.className = 'boot-title';
+        title.textContent = 'Erreur de démarrage';
+
+        var description = document.createElement('p');
+        description.className = 'boot-copy';
+        description.textContent = copy;
+
+        var details = document.createElement('div');
+        details.className = 'boot-error';
+        details.textContent = String(message || 'Erreur inconnue');
+
+        card.append(title, description, details);
+        root.replaceChildren(card);
+      }
+
+      window.addEventListener('error', function (event) {
+        showBootError(
+          'Le navigateur a chargé la page, mais le JavaScript a planté avant l’affichage.',
+          event.message
+        );
+      });
+      window.addEventListener('unhandledrejection', function (event) {
+        var reason = event.reason;
+        var message = reason && reason.message ? reason.message : String(reason || 'Promesse rejetée');
+        showBootError(
+          'Une promesse a été rejetée pendant l’initialisation de l’application.',
+          message
+        );
+      });
+    </script>
   </head>
   <body>
+    <div id="boot-status">
+      <div class="boot-card">
+        <h1 class="boot-title">Chargement de Flashover78</h1>
+        <p class="boot-copy">Si cet écran reste affiché ou devient blanc, une erreur de démarrage sera montrée ici.</p>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

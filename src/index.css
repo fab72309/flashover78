@@ -2,21 +2,125 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================
+   DESIGN SYSTEM: The Vigilant Editorial
+   ============================================ */
+
 :root {
-  --primary-color: #FF4500;
+  --primary: #ad2c00;
+  --primary-light: #d34011;
+  --primary-dark: #8a2300;
+  --primary-container: #d34011;
+  --surface: #f9f9fb;
+  --surface-container: #eeeef0;
+  --surface-container-low: #f3f3f5;
+  --surface-container-lowest: #ffffff;
+  --surface-container-high: #e8e8ea;
+  --surface-container-highest: #e2e2e4;
+  --on-surface: #1a1c1d;
+  --on-surface-variant: #6b7280;
+  --secondary: #4c616c;
+  --outline: #c4c4c6;
+  --outline-variant: #d4d4d6;
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+.dark {
+  --primary: #ff8a65;
+  --primary-light: #ffab91;
+  --primary-dark: #e85d35;
+  --primary-container: #b93813;
+  --surface: #151718;
+  --surface-container: #242728;
+  --surface-container-low: #1c1f20;
+  --surface-container-lowest: #101213;
+  --surface-container-high: #2d3031;
+  --surface-container-highest: #363a3b;
+  --on-surface: #f2f4f4;
+  --on-surface-variant: #b7bec1;
+  --secondary: #a8c3cf;
+  --outline: #777f82;
+  --outline-variant: #414648;
+}
+
+/* Base */
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 body {
-  @apply bg-gray-50;
+  @apply bg-surface font-sans text-on-surface;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
 }
 
+/* Safe area */
 .safe-area-bottom {
   padding-bottom: calc(var(--safe-area-bottom) + 0.5rem);
 }
 
+/* ============================================
+   GLASSMORPHISM
+   ============================================ */
+.glass {
+  background: rgba(249, 249, 251, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.dark .glass {
+  background: rgba(21, 23, 24, 0.88);
+}
+
+.glass-dark {
+  background: rgba(26, 28, 29, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* ============================================
+   GRADIENT BUTTONS (Primary CTA)
+   ============================================ */
+.btn-primary-gradient {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%);
+  @apply text-white font-semibold shadow-ambient transition-all duration-200;
+}
+
+.btn-primary-gradient:hover {
+  @apply shadow-ambient-lg;
+  filter: brightness(1.05);
+}
+
+.btn-primary-gradient:active {
+  transform: scale(0.98);
+  filter: brightness(0.95);
+}
+
+/* ============================================
+   SURFACE CARD SYSTEM (No-Line Rule)
+   ============================================ */
+.surface-card {
+  @apply bg-surface-container-lowest rounded-squircle shadow-ambient-sm;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.surface-card:hover {
+  @apply shadow-ambient;
+}
+
+.surface-tray {
+  @apply bg-surface-container rounded-squircle-lg;
+}
+
+.surface-recessed {
+  @apply bg-surface-container-highest rounded-full;
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
 .nav-item-enter {
   animation: slideUp 0.2s ease-out forwards;
 }
@@ -29,47 +133,6 @@ body {
   to {
     transform: translateY(0);
     opacity: 1;
-  }
-}
-
-.react-calendar {
-  @apply w-full border-none bg-transparent font-sans;
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-}
-
-.react-calendar__tile--active {
-  @apply bg-[#FF4500] text-white rounded-lg;
-}
-
-.react-calendar__tile--now {
-  @apply bg-orange-100 rounded-lg;
-}
-
-.react-calendar__month-view__days__day {
-  @apply p-2.5;
-}
-
-.react-calendar__navigation button:enabled:hover,
-.react-calendar__navigation button:enabled:focus {
-  @apply bg-orange-100 rounded-lg;
-}
-
-.react-calendar__tile:enabled:hover,
-.react-calendar__tile:enabled:focus {
-  @apply bg-orange-100 rounded-lg;
-}
-
-@media (orientation: landscape) {
-  .container {
-    max-width: 1024px;
-    margin: 0 auto;
-  }
-}
-
-@media (min-width: 768px) {
-  .container {
-    max-width: 1280px;
   }
 }
 
@@ -88,52 +151,13 @@ body {
   animation: dotAppear 0.2s ease-out forwards;
 }
 
-/* Loading Spinner */
-.loading-spinner {
-  @apply inline-block w-8 h-8 border-4 border-gray-300 border-t-[#FF4500] rounded-full animate-spin;
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* PWA Styles */
-@media (display-mode: standalone) {
-  .safe-area-top {
-    padding-top: env(safe-area-inset-top, 0);
-  }
-  
-  .safe-area-left {
-    padding-left: env(safe-area-inset-left, 0);
-  }
-  
-  .safe-area-right {
-    padding-right: env(safe-area-inset-right, 0);
-  }
-}
-
-/* Desktop specific styles */
-@media (min-width: 1024px) {
-  .desktop-nav {
-    @apply w-64 h-screen fixed left-0 top-0 border-r border-gray-200 shadow-sm;
-  }
-  
-  .desktop-main {
-    @apply ml-64;
-  }
-}
-
-/* Improved responsiveness for forms */
-@screen md {
-  .form-container {
-    @apply max-w-xl mx-auto;
-  }
-}
-
-/* Improved focus states for accessibility */
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
-  @apply outline-none ring-2 ring-[#FF4500] ring-offset-2;
-}
-
-/* Add smooth scrolling */
-html {
-  scroll-behavior: smooth;
+.fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
 }
 
 /* Modal transitions */
@@ -153,4 +177,332 @@ html {
 @keyframes modal-fade-out {
   from { opacity: 1; transform: scale(1); }
   to { opacity: 0; transform: scale(0.95); }
+}
+
+/* Status Orb */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(173, 44, 0, 0.4); }
+  50% { box-shadow: 0 0 12px 4px rgba(173, 44, 0, 0.15); }
+}
+
+.status-orb {
+  @apply w-2.5 h-2.5 rounded-full bg-primary;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ============================================
+   REACT CALENDAR STYLING
+   ============================================ */
+.calendar-shell {
+  background:
+    radial-gradient(circle at top right, rgba(173, 44, 0, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(238, 238, 240, 0.55), rgba(255, 255, 255, 0.95));
+  border-radius: 2rem;
+  padding: 1.25rem;
+}
+
+.react-calendar.calendar-editorial {
+  @apply w-full border-none bg-transparent font-sans;
+  font-size: 0.95rem;
+  line-height: 1.25rem;
+}
+
+.calendar-editorial .react-calendar__navigation {
+  @apply flex items-center justify-between mb-6 gap-3;
+}
+
+.calendar-editorial .react-calendar__navigation button {
+  min-width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 9999px;
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  transition: all 0.2s ease;
+}
+
+.calendar-editorial .react-calendar__navigation button:enabled:hover,
+.calendar-editorial .react-calendar__navigation button:enabled:focus {
+  background: rgba(173, 44, 0, 0.08);
+}
+
+.calendar-heading {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.calendar-heading-month {
+  font-size: 1.65rem;
+  line-height: 1;
+  font-weight: 700;
+  text-transform: capitalize;
+  color: var(--on-surface);
+}
+
+.calendar-heading-year {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
+.calendar-editorial .react-calendar__month-view__weekdays {
+  margin-bottom: 0.6rem;
+}
+
+.calendar-editorial .react-calendar__month-view__weekdays__weekday {
+  padding: 0.5rem 0;
+  text-decoration: none;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+}
+
+.calendar-editorial .react-calendar__month-view__weekdays__weekday abbr {
+  text-decoration: none;
+}
+
+.calendar-editorial .react-calendar__month-view__days {
+  gap: 0.25rem 0;
+}
+
+.calendar-editorial .react-calendar__tile {
+  position: relative;
+  height: 5rem;
+  padding: 0.8rem 0.65rem;
+  border-radius: 1.3rem;
+  background: transparent;
+  text-align: left;
+  transition: transform 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.calendar-editorial .react-calendar__tile:enabled:hover,
+.calendar-editorial .react-calendar__tile:enabled:focus {
+  background: rgba(173, 44, 0, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(173, 44, 0, 0.12);
+}
+
+.calendar-editorial .react-calendar__month-view__days__day--neighboringMonth {
+  color: #a5acb8;
+}
+
+.calendar-editorial .react-calendar__tile abbr {
+  position: relative;
+  z-index: 1;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.calendar-tile-selected {
+  background: linear-gradient(135deg, rgba(173, 44, 0, 0.14), rgba(173, 44, 0, 0.06));
+  box-shadow: inset 0 0 0 1px rgba(173, 44, 0, 0.2);
+}
+
+.calendar-tile-today abbr {
+  color: var(--primary);
+}
+
+.calendar-tile-today::after {
+  content: '';
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: var(--primary);
+}
+
+.calendar-tile-has-events::before {
+  content: '';
+  position: absolute;
+  inset: auto 0.65rem 0.65rem;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(173, 44, 0, 0.18), rgba(173, 44, 0, 0));
+}
+
+.calendar-event-dots {
+  position: absolute;
+  left: 0.65rem;
+  bottom: 0.62rem;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.calendar-event-dot {
+  width: 0.36rem;
+  height: 0.36rem;
+  border-radius: 9999px;
+  background: var(--primary);
+  opacity: 0.9;
+}
+
+.calendar-editorial .react-calendar__tile--active {
+  background: linear-gradient(135deg, rgba(173, 44, 0, 0.16), rgba(173, 44, 0, 0.08));
+  color: var(--on-surface);
+}
+
+@media (max-width: 767px) {
+  .calendar-shell {
+    border-radius: 1.2rem;
+    padding: 0.6rem;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(243, 243, 245, 0.95));
+  }
+
+  .calendar-editorial .react-calendar__navigation {
+    margin-bottom: 0.7rem;
+    gap: 0.5rem;
+  }
+
+  .calendar-editorial .react-calendar__navigation button {
+    min-width: 2.35rem;
+    height: 2.35rem;
+  }
+
+  .calendar-heading {
+    gap: 0.35rem;
+  }
+
+  .calendar-heading-month {
+    font-size: 1rem;
+  }
+
+  .calendar-heading-year {
+    font-size: 0.72rem;
+  }
+
+  .calendar-editorial .react-calendar__month-view__weekdays__weekday {
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    padding: 0.25rem 0;
+  }
+
+  .calendar-editorial .react-calendar__tile {
+    height: 2.65rem;
+    padding: 0.3rem 0.2rem;
+    border-radius: 0.8rem;
+    text-align: center;
+  }
+
+  .calendar-editorial .react-calendar__tile abbr {
+    font-size: 0.82rem;
+    font-weight: 700;
+  }
+
+  .calendar-tile-today::after {
+    top: 0.28rem;
+    right: 0.28rem;
+    width: 0.3rem;
+    height: 0.3rem;
+  }
+
+  .calendar-event-dots {
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 0.22rem;
+    gap: 0.22rem;
+  }
+
+  .calendar-event-dot {
+    width: 0.22rem;
+    height: 0.22rem;
+  }
+
+  .calendar-editorial-mobile .calendar-tile-has-events::before {
+    display: none;
+  }
+
+  .calendar-editorial-mobile .calendar-tile-selected {
+    box-shadow: inset 0 0 0 1px rgba(173, 44, 0, 0.24);
+  }
+
+  .calendar-editorial-mobile .react-calendar__month-view__weekdays {
+    margin-bottom: 0.3rem;
+  }
+}
+
+/* ============================================
+   LOADING SPINNER
+   ============================================ */
+.loading-spinner {
+  @apply inline-block w-8 h-8 border-4 border-surface-container rounded-full animate-spin;
+  border-top-color: var(--primary);
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (orientation: landscape) {
+  .container {
+    max-width: 1024px;
+    margin: 0 auto;
+  }
+}
+
+@media (min-width: 768px) {
+  .container {
+    max-width: 1280px;
+  }
+}
+
+/* Desktop sidebar */
+@media (min-width: 1024px) {
+  .desktop-nav {
+    @apply w-64 h-screen fixed left-0 top-0 shadow-ambient-sm;
+    background: var(--surface-container-low);
+  }
+
+  .desktop-main {
+    @apply ml-64;
+  }
+}
+
+/* Forms responsive */
+@screen md {
+  .form-container {
+    @apply max-w-xl mx-auto;
+  }
+}
+
+/* PWA Styles */
+@media (display-mode: standalone) {
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+  .safe-area-left {
+    padding-left: env(safe-area-inset-left, 0);
+  }
+  .safe-area-right {
+    padding-right: env(safe-area-inset-right, 0);
+  }
+}
+
+/* ============================================
+   FOCUS STATES (Accessibility)
+   ============================================ */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  @apply outline-none ring-2 ring-primary ring-offset-2;
+}
+
+/* ============================================
+   GHOST BORDER (subtle definition)
+   ============================================ */
+.ghost-border {
+  box-shadow: inset 0 0 0 1px rgba(212, 212, 214, 0.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

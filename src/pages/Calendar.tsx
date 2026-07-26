@@ -1,12 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Calendar from 'react-calendar';
-import { ChevronLeft, ChevronRight, Search, Plus } from 'lucide-react';
+import {
+  CalendarDays,
+  CarFront,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  MapPin,
+  Plus,
+  Search,
+  Sparkles,
+} from 'lucide-react';
 import { useCollection } from '../hooks/useFirestore';
-import { CalendarEvent } from '../types';
+import type { CalendarEvent } from '../types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import 'react-calendar/dist/Calendar.css';
+import { APP_ROUTES } from '../utils/constants';
+import { useAuth } from '../contexts/AuthContext';
 
 type ValuePiece = Date | null;
 type Value = ValuePiece | [ValuePiece, ValuePiece];
@@ -14,39 +26,40 @@ type Value = ValuePiece | [ValuePiece, ValuePiece];
 function CalendarPage() {
   const navigate = useNavigate();
   const today = new Date();
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const { user } = useAuth();
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+  const [selectedDate, setSelectedDate] = useState<Date>(today);
   const { documents: events, loading } = useCollection<CalendarEvent>('events');
   const [view, setView] = useState<'month' | 'week' | 'day'>('month');
   const [search, setSearch] = useState('');
-
-  // Date de référence pour les vues semaine/jour
   const [currentDate, setCurrentDate] = useState<Date>(today);
   const dayContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Helper robuste pour convertir Firestore Timestamp | string | number | Date en Date
   const toDate = (input: unknown): Date => {
     if (input instanceof Date) return input;
-    // Firestore Timestamp
-    if (input && typeof input === 'object' && 'toDate' in (input as any) && typeof (input as any).toDate === 'function') {
-      return (input as any).toDate();
+    if (
+      input
+      && typeof input === 'object'
+      && 'toDate' in input
+      && typeof input.toDate === 'function'
+    ) {
+      return input.toDate() as Date;
     }
-    // ISO string ou millis
-    return new Date(input as any);
+    return new Date(String(input));
   };
 
-  // Lundi de la semaine pour une date donnée
   const getMonday = (d: Date) => {
     const date = new Date(d);
     const day = date.getDay();
-    // getDay(): 0=Dimanche, 1=Lundi, ..., 6=Samedi
-    const diff = (day === 0 ? -6 : 1) - day; // ajuste pour obtenir lundi
+    const diff = (day === 0 ? -6 : 1) - day;
     date.setDate(date.getDate() + diff);
     date.setHours(0, 0, 0, 0);
     return date;
   };
 
-  // Filtrage des événements selon la recherche
-  const filteredEvents = events.filter(event => {
+  const filteredEvents = events.filter((event) => {
     const query = search.toLowerCase();
     return (
       event.title.toLowerCase().includes(query) ||
@@ -55,287 +68,545 @@ function CalendarPage() {
     );
   });
 
-  // Récupère les événements de la semaine courante
   const getEventsForCurrentWeek = () => {
     const startOfWeek = getMonday(currentDate);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     endOfWeek.setHours(23, 59, 59, 999);
-    return filteredEvents.filter(event => {
+    return filteredEvents.filter((event) => {
       const eventDate = toDate(event.date);
       return eventDate >= startOfWeek && eventDate <= endOfWeek;
     });
   };
 
-  // Récupère les événements du jour courant
   const getEventsForToday = () => {
-    const base = view === 'day' ? currentDate : today;
-    return filteredEvents.filter(event => {
+    const base = view === 'day' ? currentDate : selectedDate;
+    return filteredEvents.filter((event) => {
       const eventDate = toDate(event.date);
       return format(eventDate, 'yyyy-MM-dd') === format(base, 'yyyy-MM-dd');
     });
   };
 
-  // Pour la vue Mois, marqueurs filtrés
-  const getEventsForDate = (date: Date) => {
-    return filteredEvents.filter(event => format(toDate(event.date), 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'));
-  };
+  const getEventsForDate = (date: Date) =>
+    filteredEvents.filter((event) => format(toDate(event.date), 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd'));
+
+  const selectedDateEvents = getEventsForDate(selectedDate).sort(
+    (a, b) => toDate(a.date).getTime() - toDate(b.date).getTime()
+  );
+
+  const upcomingEvents = filteredEvents
+    .filter((event) => toDate(event.date).getTime() >= today.setHours(0, 0, 0, 0))
+    .sort((a, b) => toDate(a.date).getTime() - toDate(b.date).getTime())
+    .slice(0, 4);
+
+  const eventsThisMonth = filteredEvents.filter(
+    (event) =>
+      toDate(event.date).getMonth() === currentDate.getMonth() &&
+      toDate(event.date).getFullYear() === currentDate.getFullYear()
+  );
+  const monthHasSelection = selectedDateEvents.length > 0;
 
   const handleDateClick = (value: Value) => {
     if (value instanceof Date) {
       setSelectedDate(value);
       setCurrentDate(value);
-      setView('day');
     }
   };
 
   useEffect(() => {
+    const handleResize = () => {
+      const nextIsMobile = window.innerWidth < 768;
+      setIsMobile(nextIsMobile);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
     if (view !== 'day') return;
-    const hour = (view === 'day' ? new Date(currentDate) : new Date()).getHours();
+    const hour = new Date(currentDate).getHours();
     const el = document.getElementById(`hour-${hour}`);
     if (el && dayContainerRef.current) {
-      // petite temporisation pour laisser le rendu compléter
       setTimeout(() => {
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       }, 0);
     }
   }, [view, currentDate]);
 
-  return (
-    <div className="min-h-screen space-y-3 relative pb-20 bg-gray-50">
-      <div className="bg-white rounded-lg shadow-sm p-2 -mx-4 px-4">
-        <div className="flex justify-center space-x-2 mb-2">
-          <button 
-            type="button"
-            aria-pressed={view === 'day'}
-            onClick={() => { setView('day'); setCurrentDate(today); }}
-            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-              view === 'day' ? 'bg-[#FF4500] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Jour
-          </button>
-          <button 
-            type="button"
-            aria-pressed={view === 'week'}
-            onClick={() => { setView('week'); setCurrentDate(today); }}
-            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-              view === 'week' ? 'bg-[#FF4500] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Semaine
-          </button>
-          <button 
-            type="button"
-            aria-pressed={view === 'month'}
-            onClick={() => { setView('month'); setCurrentDate(today); }}
-            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-              view === 'month' ? 'bg-[#FF4500] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Mois
-          </button>
-        </div>
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Rechercher un événement"
-            className="w-full p-2 pl-9 bg-gray-50 rounded-lg text-sm mb-3"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-        </div>
-      </div>
+  const viewButton = (v: 'day' | 'week' | 'month', label: string) => (
+    <button
+      type="button"
+      aria-pressed={view === v}
+      onClick={() => {
+        setView(v);
+        setCurrentDate(selectedDate);
+      }}
+      className={`px-4 py-2 rounded-full text-label-lg transition-all duration-200 ${
+        view === v
+          ? 'bg-primary text-white shadow-ambient-sm'
+          : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
+      }`}
+    >
+      {label}
+    </button>
+  );
 
-      {loading ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#FF4500]"></div>
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg p-2 shadow-sm">
-          <div key={view}>
-            {view === 'month' ? (
-              <Calendar
-                onClickDay={handleDateClick}
-                value={today}
-                prevLabel={<ChevronLeft className="text-[#FF4500]" size={18} />}
-                nextLabel={<ChevronRight className="text-[#FF4500]" size={18} />}
-                className="w-full border-none"
-                tileClassName={({ date }) => {
-                  const hasEvents = getEventsForDate(date).length > 0;
-                  const isSelected = selectedDate && format(date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
-                  const isToday = format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
-                  return `rounded-lg relative ${
-                    isSelected ? 'bg-[#FF4500] text-white' : 
-                    isToday ? 'text-[#FF4500] font-bold' :
-                    hasEvents ? 'hover:bg-orange-100' : 
-                    'hover:bg-gray-100'
-                  }`;
-                }}
-                tileContent={({ date }) => {
-                  const eventsForDate = getEventsForDate(date);
-                  const isToday = format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
-                  if (eventsForDate.length > 0) {
-                    return (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className={`w-8 h-8 border-2 ${isToday ? 'bg-[#FF4500] border-[#FF4500]' : 'border-[#FF4500]'} rounded-full`}></div>
-                      </div>
-                    );
-                  } else if (isToday) {
-                    return (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-8 h-8 border-2 border-[#FF4500] rounded-full"></div>
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-                navigationLabel={({ date }) => format(date, 'MMMM yyyy', { locale: fr })}
-              />
-            ) : view === 'week' ? (
-              <div className="w-full">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentDate(d => { const nd = new Date(d); nd.setDate(nd.getDate() - 7); return nd; })}
-                      className="p-1 rounded hover:bg-gray-100"
-                      aria-label="Semaine précédente"
-                    >
-                      <ChevronLeft size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentDate(d => { const nd = new Date(d); nd.setDate(nd.getDate() + 7); return nd; })}
-                      className="p-1 rounded hover:bg-gray-100"
-                      aria-label="Semaine suivante"
-                    >
-                      <ChevronRight size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentDate(new Date())}
-                      className="ml-2 px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200"
-                    >
-                      Aujourd'hui
-                    </button>
-                  </div>
-                  <div className="text-sm font-medium text-gray-700">
-                    {(() => {
-                      const start = getMonday(currentDate);
-                      const end = new Date(start);
-                      end.setDate(start.getDate() + 6);
-                      return `${format(start, 'dd MMM', { locale: fr })} – ${format(end, 'dd MMM yyyy', { locale: fr })}`;
-                    })()}
-                  </div>
-                </div>
-                <div className="grid grid-cols-7 gap-2 bg-gray-50 rounded-lg overflow-hidden">
-                  {[...Array(7)].map((_, i) => {
-                    const monday = getMonday(currentDate);
-                    const day = new Date(monday);
-                    day.setDate(monday.getDate() + i);
-                    return (
-                      <div key={i} className="p-2 text-center font-semibold bg-white border-b border-gray-200">
-                        {format(day, 'EEE dd/MM', { locale: fr })}
-                      </div>
-                    );
-                  })}
-                  {[...Array(7)].map((_, i) => {
-                    const monday = getMonday(currentDate);
-                    const day = new Date(monday);
-                    day.setDate(monday.getDate() + i);
-                    const events = getEventsForCurrentWeek().filter(event => {
-                      const eventDate = toDate(event.date);
-                      return format(eventDate, 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd');
-                    });
-                    return (
-                      <div key={i} className="min-h-[100px] bg-white border-r border-gray-200 p-2">
-                        {events.length > 0 ? (
-                          events.map(event => (
-                            <div key={event.id} className="mb-2 p-2 rounded bg-[#FF4500]/10">
-                              <div className="font-medium text-[#FF4500]">{event.title}</div>
-                              <div className="text-xs text-gray-500">{format(toDate(event.date), 'HH:mm', { locale: fr })} - {event.location}</div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="text-xs text-gray-400 text-center">Aucun événement</div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+  return (
+    <div className="min-h-screen space-y-5 relative pb-20 fade-in">
+      <section className="surface-card p-4 md:p-5 overflow-hidden relative">
+        <div className="absolute inset-y-0 right-0 w-40 bg-gradient-to-l from-primary/10 to-transparent pointer-events-none" />
+        <div className="relative z-10 space-y-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-label-lg">
+                <CalendarDays size={16} />
+                Vue planning
               </div>
-            ) : (
-              <div className="w-full">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentDate(d => { const nd = new Date(d); nd.setDate(nd.getDate() - 1); return nd; })}
-                      className="p-1 rounded hover:bg-gray-100"
-                      aria-label="Jour précédent"
-                    >
-                      <ChevronLeft size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentDate(d => { const nd = new Date(d); nd.setDate(nd.getDate() + 1); return nd; })}
-                      className="p-1 rounded hover:bg-gray-100"
-                      aria-label="Jour suivant"
-                    >
-                      <ChevronRight size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentDate(new Date())}
-                      className="ml-2 px-2 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200"
-                    >
-                      Aujourd'hui
-                    </button>
-                  </div>
-                  <div className="text-sm font-medium text-gray-700">
-                    {format(currentDate, "EEEE d MMMM yyyy", { locale: fr })}
-                  </div>
-                </div>
-                <div ref={dayContainerRef} className="grid grid-cols-1 divide-y divide-gray-200 bg-gray-50 rounded-lg overflow-hidden max-h-[60vh] overflow-y-auto">
-                  {[...Array(24)].map((_, hour) => {
-                    const base = currentDate;
-                    const events = getEventsForToday().filter(event => {
-                      const eventDate = toDate(event.date);
-                      return format(eventDate, 'yyyy-MM-dd') === format(base, 'yyyy-MM-dd') && new Date(eventDate).getHours() === hour;
-                    });
-                    return (
-                      <div id={`hour-${hour}`} key={hour} className="flex flex-col p-2 min-h-[40px]">
-                        <div className="text-xs font-semibold text-gray-500 mb-1">{hour.toString().padStart(2, '0')}:00</div>
-                        {events.length > 0 ? (
-                          events.map(event => (
-                            <div key={event.id} className="mb-1 p-2 rounded bg-[#FF4500]/10">
-                              <div className="font-medium text-[#FF4500]">{event.title}</div>
-                              <div className="text-xs text-gray-500">{event.location}</div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="text-xs text-gray-400">—</div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+              <h1 className="text-display-sm text-on-surface mt-3">Calendrier des formations</h1>
+              <p className="text-body-lg text-on-surface-variant mt-2 max-w-2xl">
+                Une vue plus lisible des formations, avec accès direct au co-voiturage et aux créneaux du jour.
+              </p>
+            </div>
+
+            {!isMobile && (
+              <div className="grid grid-cols-2 gap-3 min-w-[260px]">
+                <MetricCard label="Ce mois" value={eventsThisMonth.length} icon={<Sparkles size={16} />} />
+                <MetricCard label="Jour choisi" value={selectedDateEvents.length} icon={<Clock3 size={16} />} />
               </div>
             )}
           </div>
+
+          <div className="flex flex-wrap justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              {viewButton('month', 'Mois')}
+              {viewButton('week', 'Semaine')}
+              {viewButton('day', 'Jour')}
+            </div>
+
+            <div className="relative min-w-0 flex-1 max-w-xl w-full md:w-auto">
+              <input
+                type="text"
+                placeholder="Rechercher un événement, un lieu, une formation"
+                className="w-full p-3 pl-11 bg-surface-container-highest rounded-full text-body-md text-on-surface placeholder:text-on-surface-variant"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-secondary" size={18} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <div className="loading-spinner"></div>
+        </div>
+      ) : view === 'month' ? (
+        <div className={`grid gap-5 ${isMobile ? 'grid-cols-1' : 'xl:grid-cols-[minmax(0,1.35fr)_380px]'}`}>
+          <section className="surface-card p-4 md:p-5">
+            <div className="calendar-shell">
+              <Calendar
+                onClickDay={handleDateClick}
+                value={selectedDate}
+                activeStartDate={currentDate}
+                onActiveStartDateChange={({ activeStartDate }) => {
+                  if (activeStartDate) {
+                    setCurrentDate(activeStartDate);
+                  }
+                }}
+                prev2Label={null}
+                next2Label={null}
+                prevLabel={<ChevronLeft className="text-primary" size={18} />}
+                nextLabel={<ChevronRight className="text-primary" size={18} />}
+                className={`calendar-editorial w-full border-none ${isMobile ? 'calendar-editorial-mobile' : ''}`}
+                tileClassName={({ date, view: tileView }) => {
+                  if (tileView !== 'month') return '';
+                  const hasEvents = getEventsForDate(date).length > 0;
+                  const isSelected = format(date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
+                  const isToday = format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
+                  return [
+                    'calendar-tile',
+                    hasEvents ? 'calendar-tile-has-events' : '',
+                    isToday ? 'calendar-tile-today' : '',
+                    isSelected ? 'calendar-tile-selected' : '',
+                  ].join(' ');
+                }}
+                tileContent={({ date, view: tileView }) => {
+                  if (tileView !== 'month') return null;
+                  const eventsForDate = getEventsForDate(date);
+                  if (!eventsForDate.length) return null;
+                  return (
+                    <div className={`calendar-event-dots ${isMobile ? 'calendar-event-dots-mobile' : ''}`}>
+                      {eventsForDate.slice(0, 3).map((event) => (
+                        <span key={event.id} className="calendar-event-dot" />
+                      ))}
+                    </div>
+                  );
+                }}
+                formatShortWeekday={(_, date) => format(date, 'EEE', { locale: fr }).slice(0, 3)}
+                navigationLabel={({ date }) => (
+                  <div className="calendar-heading">
+                    <span className="calendar-heading-month">{format(date, 'MMMM', { locale: fr })}</span>
+                    <span className="calendar-heading-year">{format(date, 'yyyy')}</span>
+                  </div>
+                )}
+              />
+            </div>
+
+            {isMobile && (
+              <div className="mt-4 rounded-squircle bg-surface-container-low p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-body-lg font-semibold text-on-surface">
+                      {format(selectedDate, 'EEEE d MMMM', { locale: fr })}
+                    </div>
+                  </div>
+                  <div className="px-3 py-1 rounded-full bg-primary/10 text-primary text-label-sm">
+                    {selectedDateEvents.length}
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {monthHasSelection ? (
+                    selectedDateEvents.slice(0, 3).map((event) => (
+                      <EventMiniCard
+                        key={event.id}
+                        event={event}
+                        onOpen={() => navigate(`${APP_ROUTES.TRAINING_SESSION}/${event.id}`)}
+                        onCarpool={() => navigate(`${APP_ROUTES.CARPOOL}?eventId=${event.id}`)}
+                      />
+                    ))
+                  ) : (
+                    <p className="text-body-md text-on-surface-variant">
+                      Touchez un jour du mois pour afficher son aperçu.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+
+          {!isMobile && <aside className="space-y-4">
+            <section className="surface-card p-4 md:p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-label-lg text-primary uppercase tracking-wide">Jour sélectionné</p>
+                  <h2 className="text-headline-lg text-on-surface mt-2">
+                    {format(selectedDate, 'EEEE d MMMM yyyy', { locale: fr })}
+                  </h2>
+                </div>
+                <div className="px-3 py-1 rounded-full bg-primary/10 text-primary text-label-lg">
+                  {selectedDateEvents.length} événement{selectedDateEvents.length > 1 ? 's' : ''}
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {selectedDateEvents.length === 0 ? (
+                  <p className="text-body-md text-on-surface-variant">
+                    Aucun événement prévu ce jour-là.
+                  </p>
+                ) : (
+                  selectedDateEvents.map((event) => (
+                    <EventAgendaCard
+                      key={event.id}
+                      event={event}
+                      onOpen={() => navigate(`${APP_ROUTES.TRAINING_SESSION}/${event.id}`)}
+                      onCarpool={() => navigate(`${APP_ROUTES.CARPOOL}?eventId=${event.id}`)}
+                    />
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="surface-card p-4 md:p-5">
+              <div className="flex items-center gap-2">
+                <Sparkles size={18} className="text-primary" />
+                <h2 className="text-headline-sm text-on-surface">À venir</h2>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {upcomingEvents.length === 0 ? (
+                  <p className="text-body-md text-on-surface-variant">Aucun événement à venir.</p>
+                ) : (
+                  upcomingEvents.map((event) => (
+                    <button
+                      key={event.id}
+                      type="button"
+                      onClick={() => {
+                        const eventDate = toDate(event.date);
+                        setSelectedDate(eventDate);
+                        setCurrentDate(eventDate);
+                      }}
+                      className="w-full text-left rounded-squircle-sm bg-surface-container p-4 hover:bg-surface-container-high transition-colors"
+                    >
+                      <div className="text-body-lg font-semibold text-on-surface">{event.title}</div>
+                      <div className="text-body-md text-on-surface-variant mt-1">
+                        {format(toDate(event.date), "d MMM yyyy 'à' HH:mm", { locale: fr })}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </section>
+          </aside>}
+        </div>
+      ) : view === 'week' ? (
+        <section className="surface-card p-4 md:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentDate((d) => {
+                  const nd = new Date(d);
+                  nd.setDate(nd.getDate() - 7);
+                  return nd;
+                })}
+                className="p-2 rounded-full bg-surface-container hover:bg-surface-container-high transition-colors"
+                aria-label="Semaine précédente"
+              >
+                <ChevronLeft size={18} className="text-on-surface-variant" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentDate((d) => {
+                  const nd = new Date(d);
+                  nd.setDate(nd.getDate() + 7);
+                  return nd;
+                })}
+                className="p-2 rounded-full bg-surface-container hover:bg-surface-container-high transition-colors"
+                aria-label="Semaine suivante"
+              >
+                <ChevronRight size={18} className="text-on-surface-variant" />
+              </button>
+            </div>
+            <div className="text-headline-sm text-on-surface">
+              {(() => {
+                const start = getMonday(currentDate);
+                const end = new Date(start);
+                end.setDate(start.getDate() + 6);
+                return `${format(start, 'dd MMM', { locale: fr })} - ${format(end, 'dd MMM yyyy', { locale: fr })}`;
+              })()}
+            </div>
+          </div>
+
+          <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'md:grid-cols-7'}`}>
+            {[...Array(7)].map((_, i) => {
+              const monday = getMonday(currentDate);
+              const day = new Date(monday);
+              day.setDate(monday.getDate() + i);
+              const dayEvents = getEventsForCurrentWeek().filter(
+                (event) => format(toDate(event.date), 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd')
+              );
+
+              return (
+                <div key={i} className={`rounded-squircle bg-surface-container-low p-3 ${isMobile ? '' : 'min-h-[220px]'}`}>
+                  <div className="pb-3 border-b border-outline-variant/70">
+                    <div className="text-label-sm uppercase tracking-wide text-on-surface-variant">
+                      {format(day, 'EEE', { locale: fr })}
+                    </div>
+                    <div className="text-headline-sm text-on-surface mt-1">{format(day, 'd')}</div>
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {dayEvents.length === 0 ? (
+                      <div className="text-label-sm text-on-surface-variant opacity-60">Aucun événement</div>
+                    ) : (
+                      dayEvents.map((event) => (
+                        <EventMiniCard
+                          key={event.id}
+                          event={event}
+                          onOpen={() => navigate(`${APP_ROUTES.TRAINING_SESSION}/${event.id}`)}
+                          onCarpool={() => navigate(`${APP_ROUTES.CARPOOL}?eventId=${event.id}`)}
+                        />
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : (
+        <section className="surface-card p-4 md:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentDate((d) => {
+                  const nd = new Date(d);
+                  nd.setDate(nd.getDate() - 1);
+                  return nd;
+                })}
+                className="p-2 rounded-full bg-surface-container hover:bg-surface-container-high transition-colors"
+                aria-label="Jour précédent"
+              >
+                <ChevronLeft size={18} className="text-on-surface-variant" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentDate((d) => {
+                  const nd = new Date(d);
+                  nd.setDate(nd.getDate() + 1);
+                  return nd;
+                })}
+                className="p-2 rounded-full bg-surface-container hover:bg-surface-container-high transition-colors"
+                aria-label="Jour suivant"
+              >
+                <ChevronRight size={18} className="text-on-surface-variant" />
+              </button>
+            </div>
+            <div className="text-headline-sm text-on-surface">
+              {format(currentDate, 'EEEE d MMMM yyyy', { locale: fr })}
+            </div>
+          </div>
+
+          <div ref={dayContainerRef} className="space-y-2 max-h-[65vh] overflow-y-auto pr-1">
+            {[...Array(24)].map((_, hour) => {
+              const base = currentDate;
+              const hourEvents = getEventsForToday().filter((event) => {
+                const eventDate = toDate(event.date);
+                return (
+                  format(eventDate, 'yyyy-MM-dd') === format(base, 'yyyy-MM-dd') &&
+                  new Date(eventDate).getHours() === hour
+                );
+              });
+
+              return (
+                <div
+                  key={hour}
+                  id={`hour-${hour}`}
+                  className={`grid gap-3 rounded-squircle bg-surface-container-low p-3 ${
+                    isMobile ? 'grid-cols-1' : 'grid-cols-[72px_minmax(0,1fr)]'
+                  }`}
+                >
+                  <div className="text-label-lg font-semibold text-on-surface-variant pt-1">{hour.toString().padStart(2, '0')}:00</div>
+                  <div className="space-y-2">
+                    {hourEvents.length === 0 ? (
+                      <div className="text-label-sm text-on-surface-variant opacity-50 py-2">Aucun créneau</div>
+                    ) : (
+                      hourEvents.map((event) => (
+                        <EventAgendaCard
+                          key={event.id}
+                          event={event}
+                          compact
+                          onOpen={() => navigate(`${APP_ROUTES.TRAINING_SESSION}/${event.id}`)}
+                          onCarpool={() => navigate(`${APP_ROUTES.CARPOOL}?eventId=${event.id}`)}
+                        />
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {user?.isAdmin && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => navigate(APP_ROUTES.CALENDAR_ADD)}
+            className="w-14 h-14 btn-primary-gradient rounded-full flex items-center justify-center shadow-ambient-lg"
+            aria-label="Ajouter un événement"
+          >
+            <Plus size={24} className="text-white" />
+          </button>
         </div>
       )}
 
-      {/* Floating Action Button */}
-      <button 
-        onClick={() => navigate('/calendar/add')}
-        className="fixed right-4 bottom-20 w-14 h-14 bg-[#FF4500] rounded-full flex items-center justify-center shadow-lg hover:bg-[#FF4500]/90 transition-colors z-10 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FF4500]"
-        aria-label="Ajouter un événement"
-      >
-        <Plus size={24} className="text-white" />
-      </button>
+    </div>
+  );
+}
+
+function MetricCard({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
+  return (
+    <div className="rounded-squircle bg-surface-container p-4">
+      <div className="flex items-center gap-2 text-primary text-label-lg">{icon}<span>{label}</span></div>
+      <div className="text-display-sm text-on-surface mt-2">{value}</div>
+    </div>
+  );
+}
+
+function EventAgendaCard({
+  event,
+  onOpen,
+  onCarpool,
+  compact = false,
+}: {
+  event: CalendarEvent;
+  onOpen: () => void;
+  onCarpool: () => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`rounded-squircle-sm bg-surface-container p-4 ${compact ? 'space-y-2' : 'space-y-3'}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-body-lg font-semibold text-on-surface">{event.title}</div>
+          <div className="flex flex-wrap gap-3 mt-2 text-body-md text-on-surface-variant">
+            <span className="inline-flex items-center gap-1.5">
+              <Clock3 size={15} />
+              {format(event.date, 'HH:mm', { locale: fr })}
+            </span>
+            {event.location && (
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin size={15} />
+                {event.location}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {event.description && !compact && (
+        <p className="text-body-md text-on-surface-variant line-clamp-2">{event.description}</p>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-3 text-label-lg font-semibold text-white"
+        >
+          <CalendarDays size={15} />
+          Voir la session
+        </button>
+        <button
+          type="button"
+          onClick={onCarpool}
+          className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary/10 px-3 text-label-lg text-primary"
+        >
+          <CarFront size={15} />
+          Trajets
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EventMiniCard({
+  event,
+  onOpen,
+  onCarpool,
+}: {
+  event: CalendarEvent;
+  onOpen: () => void;
+  onCarpool: () => void;
+}) {
+  return (
+    <div className="rounded-squircle-sm bg-surface-container p-3">
+      <div className="text-label-lg font-semibold text-on-surface">{event.title}</div>
+      <div className="text-label-sm text-on-surface-variant mt-1">
+        {format(event.date, 'HH:mm', { locale: fr })}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-3">
+        <button type="button" onClick={onOpen} className="text-label-sm font-semibold text-primary">
+          Session
+        </button>
+        <button type="button" onClick={onCarpool} className="text-label-sm text-primary">
+          Co-voiturage
+        </button>
+      </div>
     </div>
   );
 }

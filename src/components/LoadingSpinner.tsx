@@ -8,7 +8,7 @@ export default function LoadingSpinner() {
         alt="Chargement..."
         className="w-16 h-16 animate-pulse"
       />
-      <div className="mt-4 text-gray-600 dark:text-gray-400">Chargement...</div>
+      <div className="mt-4 text-body-md text-on-surface-variant">Chargement...</div>
     </div>
   );
 }
