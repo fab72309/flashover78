@@ -1,75 +1,79 @@
 import { Link } from 'react-router-dom';
-import { User, Bell, Shield, Moon, LogOut } from 'lucide-react';
+import { User, Moon, LogOut, Sun } from 'lucide-react';
 import { useAppVersion } from '../hooks/useAppVersion';
+import PageIntro from '../components/PageIntro';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function Settings() {
-  const settingsCategories = [
-    {
-      id: 'account',
-      title: 'Compte',
-      description: 'Gérez vos informations personnelles et options de connexion',
-      icon: <User size={24} className="text-blue-500" />,
-      path: '/app/account'
-    },
-    {
-      id: 'appearance',
-      title: 'Apparence',
-      description: 'Personnalisez l\'apparence de l\'application',
-      icon: <Moon size={24} className="text-indigo-500" />,
-      path: '/app/settings'
-    },
-    {
-      id: 'notifications',
-      title: 'Notifications',
-      description: 'Configurez vos préférences de notifications',
-      icon: <Bell size={24} className="text-amber-500" />,
-      path: '/app/settings'
-    },
-    {
-      id: 'security',
-      title: 'Sécurité',
-      description: 'Gérez la sécurité de votre compte',
-      icon: <Shield size={24} className="text-green-500" />,
-      path: '/app/settings'
-    }
-  ];
-
+  const { isDarkMode, toggleDarkMode } = useTheme();
   const appVersion = useAppVersion();
-  
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-2">Paramètres</h1>
-      <p className="text-gray-600 mb-8">Gérez vos préférences et paramètres de compte</p>
-      
-      <div className="grid gap-6 md:grid-cols-2">
-        {settingsCategories.map((category) => (
-          <Link 
-            key={category.id}
-            to={category.path}
-            className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow flex items-start gap-4"
-          >
-            <div className="p-3 rounded-full bg-gray-50">
-              {category.icon}
+    <div className="container mx-auto py-4 fade-in">
+      <PageIntro
+        title="Paramètres"
+        subtitle="Gérez vos préférences, votre compte et les options générales de l’application."
+      />
+
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <Link
+          to="/app/account"
+          className="surface-card flex min-h-28 items-start gap-4 p-5 transition-all hover:shadow-ambient"
+        >
+          <div className="rounded-lg bg-primary/10 p-3">
+            <User size={22} className="text-primary" />
+          </div>
+          <div>
+            <h2 className="mb-1 text-headline-md text-on-surface">Compte et sécurité</h2>
+            <p className="text-body-md text-on-surface-variant">
+              Informations personnelles, email, mot de passe et déconnexion.
+            </p>
+            <div className="mt-2 flex items-center gap-1 text-label-sm uppercase text-primary">
+              <LogOut size={13} />
+              <span>Gérer le compte</span>
+            </div>
+          </div>
+        </Link>
+
+        <section className="surface-card flex min-h-28 items-start justify-between gap-4 p-5">
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="rounded-lg bg-surface-container p-3 text-secondary">
+              {isDarkMode ? <Moon size={22} /> : <Sun size={22} />}
             </div>
             <div>
-              <h2 className="text-xl font-semibold mb-2">{category.title}</h2>
-              <p className="text-gray-600">{category.description}</p>
-              {category.id === 'account' && (
-                <div className="mt-3 text-sm text-[#FF4500] flex items-center gap-1">
-                  <LogOut size={14} />
-                  <span>Options de déconnexion disponibles</span>
-                </div>
-              )}
+              <h2 className="mb-1 text-headline-md text-on-surface">Thème sombre</h2>
+              <p className="text-body-md text-on-surface-variant">
+                Réduit la luminosité de l’interface.
+              </p>
             </div>
-          </Link>
-        ))}
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isDarkMode}
+            onClick={toggleDarkMode}
+            className={[
+              'relative h-8 w-14 shrink-0 rounded-full transition-colors',
+              isDarkMode ? 'bg-primary' : 'bg-surface-container-highest',
+            ].join(' ')}
+            aria-label="Activer ou désactiver le thème sombre"
+          >
+            <span
+              className={[
+                'absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow transition-transform',
+                isDarkMode ? 'translate-x-6' : 'translate-x-0',
+              ].join(' ')}
+            />
+          </button>
+        </section>
       </div>
-      
-      <div className="mt-12 bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold mb-4">À propos</h2>
-        <p className="text-gray-600">Version de l'application: v{appVersion}</p>
-        <p className="text-gray-600 mt-2">© 2025 Flashover78. Tous droits réservés.</p>
+
+      <div className="mt-6 surface-card p-5">
+        <h2 className="text-headline-md text-on-surface mb-3">À propos</h2>
+        <p className="text-body-md text-on-surface-variant">Version de l'application: v{appVersion}</p>
+        <p className="text-body-md text-on-surface-variant mt-1">&copy; 2025 Flashover78. Tous droits réservés.</p>
       </div>
+
     </div>
   );
 }

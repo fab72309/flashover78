@@ -1,6 +1,16 @@
-import { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { useEffect, useState } from 'react';
+import { listEvents, listResources } from '../services/supabaseService';
+
+async function resolveCollection<T>(collectionName: string): Promise<T[]> {
+  switch (collectionName) {
+    case 'events':
+      return (await listEvents()) as T[];
+    case 'resources':
+      return (await listResources()) as T[];
+    default:
+      throw new Error(`Collection non supportée: ${collectionName}`);
+  }
+}
 
 export function useCollection<T>(collectionName: string) {
   const [documents, setDocuments] = useState<T[]>([]);
@@ -8,39 +18,34 @@ export function useCollection<T>(collectionName: string) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const q = query(collection(db, collectionName), orderBy('createdAt', 'desc'));
+    let isMounted = true;
 
-      const unsubscribe = onSnapshot(q, 
-        (snapshot) => {
-          const results: T[] = [];
-          snapshot.forEach(doc => {
-            const data = doc.data();
-            // Convert Firestore Timestamp to Date
-            if (data.createdAt && data.createdAt instanceof Timestamp) {
-              data.createdAt = data.createdAt.toDate();
-            }
-            if (data.date && data.date instanceof Timestamp) {
-              data.date = data.date.toDate();
-            }
-            results.push({ id: doc.id, ...data } as T);
-          });
+    const loadDocuments = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const results = await resolveCollection<T>(collectionName);
+        if (isMounted) {
           setDocuments(results);
-          setLoading(false);
-        },
-        (error) => {
-          console.error('Error fetching collection:', error);
-          setError(error.message);
+        }
+      } catch (err) {
+        console.error('Error fetching collection:', err);
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'Unknown error');
+        }
+      } finally {
+        if (isMounted) {
           setLoading(false);
         }
-      );
+      }
+    };
 
-      return () => unsubscribe();
-    } catch (err) {
-      console.error('Error setting up Firebase listener:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      setLoading(false);
-    }
+    loadDocuments();
+
+    return () => {
+      isMounted = false;
+    };
   }, [collectionName]);
 
   return { documents, loading, error };

@@ -1,43 +1,124 @@
-import { cloneElement, type ReactElement, type ReactNode, useState, useEffect } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, BookOpen, Calendar as CalendarIcon, Flame, Book, LayoutDashboard } from 'lucide-react';
+import {
+  BarChart3,
+  BookOpen,
+  CalendarDays,
+  CarFront,
+  Flame,
+  Home,
+  Menu,
+  Settings,
+  X,
+} from 'lucide-react';
+import { APP_ROUTES } from '../utils/constants';
+
+const moreDestinations = [
+  { to: APP_ROUTES.CARPOOL, label: 'Co-voiturage', icon: <CarFront size={21} /> },
+  { to: APP_ROUTES.RESOURCES, label: 'Documents', icon: <BookOpen size={21} /> },
+  { to: APP_ROUTES.DASHBOARD, label: 'Tableau de bord', icon: <BarChart3 size={21} /> },
+  { to: APP_ROUTES.SETTINGS, label: 'Paramètres', icon: <Settings size={21} /> },
+];
 
 function Navigation() {
   const location = useLocation();
-  const [visible, setVisible] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
-  
-  useEffect(() => {
-    const handleScroll = () => {
-      // Hide nav on scroll down, show on scroll up
-      const currentScrollY = window.scrollY;
-      if (currentScrollY > lastScrollY + 10) {
-        setVisible(false);
-      } else if (currentScrollY < lastScrollY - 10 || currentScrollY < 50) {
-        setVisible(true);
-      }
-      setLastScrollY(currentScrollY);
-    };
-    
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [lastScrollY]);
+  const [moreOpen, setMoreOpen] = useState(false);
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) =>
+    path === APP_ROUTES.HOME
+      ? location.pathname === path
+      : location.pathname === path || location.pathname.startsWith(`${path}/`);
+
+  const moreIsActive = moreDestinations.some((item) => isActive(item.to));
 
   return (
-    <nav className={`bg-white border-t fixed bottom-0 left-0 right-0 z-50 shadow-lg px-1 transition-transform duration-300 ${visible ? 'translate-y-0' : 'translate-y-full'}`}>
-      <div className="safe-area-bottom container mx-auto">
-        <div className="grid grid-cols-6 gap-0 py-1">
-          <NavItem to="/" icon={<Home size={24} />} label="Accueil" isActive={isActive('/')} />
-          <NavItem to="/news" icon={<BookOpen size={24} />} label="News" isActive={isActive('/news')} />
-          <NavItem to="/calendar" icon={<CalendarIcon size={24} />} label="Calendrier" isActive={isActive('/calendar')} />
-          <NavItem to="/brulage" icon={<Flame size={24} />} label="Brulage" isActive={isActive('/brulage')} />
-          <NavItem to="/resources" icon={<Book size={24} />} label="Ressources" isActive={isActive('/resources')} />
-          <NavItem to="/dashboard" icon={<LayoutDashboard size={24} />} label="TdB" isActive={isActive('/dashboard')} />
+    <>
+      {moreOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden" role="presentation">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/35"
+            onClick={() => setMoreOpen(false)}
+            aria-label="Fermer le menu"
+          />
+          <section
+            className="absolute inset-x-3 bottom-[6.8rem] rounded-lg border border-outline-variant bg-surface-container-lowest p-3 shadow-ambient-lg"
+            aria-label="Navigation complémentaire"
+          >
+            <div className="mb-2 flex items-center justify-between px-2">
+              <h2 className="text-headline-md text-on-surface">Plus</h2>
+              <button
+                type="button"
+                onClick={() => setMoreOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container"
+                aria-label="Fermer le menu"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {moreDestinations.map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={[
+                    'flex min-h-14 items-center gap-3 rounded-lg px-3 py-3 text-body-md font-semibold',
+                    isActive(item.to)
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-surface-container text-on-surface',
+                  ].join(' ')}
+                  aria-current={isActive(item.to) ? 'page' : undefined}
+                  onClick={() => setMoreOpen(false)}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
         </div>
-      </div>
-    </nav>
+      )}
+
+      <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden" aria-label="Navigation principale">
+        <div className="glass mx-3 mb-3 rounded-lg border border-outline-variant/70 px-2 shadow-glass">
+          <div className="safe-area-bottom mx-auto">
+            <div className="grid grid-cols-4 gap-1 py-2">
+              <NavItem
+                to={APP_ROUTES.HOME}
+                icon={<Home size={22} />}
+                label="Accueil"
+                isActive={isActive(APP_ROUTES.HOME)}
+              />
+              <NavItem
+                to={APP_ROUTES.CALENDAR}
+                icon={<CalendarDays size={22} />}
+                label="Calendrier"
+                isActive={isActive(APP_ROUTES.CALENDAR)}
+              />
+              <NavItem
+                to={APP_ROUTES.BRULAGE}
+                icon={<Flame size={22} />}
+                label="Brûlage"
+                isActive={isActive(APP_ROUTES.BRULAGE)}
+              />
+              <button
+                type="button"
+                onClick={() => setMoreOpen((current) => !current)}
+                className={[
+                  'flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg px-1 py-1.5',
+                  moreIsActive || moreOpen ? 'bg-primary/10 text-primary' : 'text-on-surface-variant',
+                ].join(' ')}
+                aria-expanded={moreOpen}
+                aria-label="Ouvrir les autres rubriques"
+              >
+                <Menu size={22} strokeWidth={moreIsActive || moreOpen ? 2.5 : 1.8} />
+                <span className="text-[11px] font-semibold">Plus</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+    </>
   );
 }
 
@@ -50,29 +131,16 @@ interface NavItemProps {
 
 function NavItem({ to, icon, label, isActive }: NavItemProps) {
   return (
-    <Link 
+    <Link
       to={to}
-      className={`flex flex-col items-center justify-center py-0.5 transition-all duration-200 ${
-        isActive ? 'text-[#FF4500] translate-y-[-4px]' : 'text-gray-500'
-      }`}
+      className={[
+        'flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg px-1 py-1.5',
+        isActive ? 'bg-primary/10 text-primary' : 'text-on-surface-variant',
+      ].join(' ')}
+      aria-current={isActive ? 'page' : undefined}
     >
-      <div className="relative">
-        <div className={`transition-transform duration-200 ${isActive ? 'scale-105' : ''}`}>
-          <div className="w-5 h-5 sm:w-6 sm:h-6">
-            {cloneElement(icon as ReactElement, {
-              size: '100%',
-              className: 'w-full h-full'
-            })}
-          </div>
-        </div>
-        {isActive && (
-          <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-[#FF4500] rounded-full nav-dot" />
-        )}
-      </div>
-      <span className={`text-[10px] sm:text-xs mt-0.5 font-medium ${isActive ? 'opacity-100' : 'opacity-70'
-      }`}>
-        {label}
-      </span>
+      {icon}
+      <span className="text-[11px] font-semibold">{label}</span>
     </Link>
   );
 }

@@ -4,7 +4,7 @@
  */
 export const useAppVersion = (): string => {
   // VITE_APP_VERSION est injecté au build via GitHub Actions
-  return (import.meta as any).env?.VITE_APP_VERSION || 'dev';
+  return import.meta.env.VITE_APP_VERSION || 'dev';
 };
 
 export default useAppVersion;

@@ -1,51 +1,30 @@
 import { useState } from 'react';
-import { addEvent } from '../services/firebaseService';
-import type { CalendarEvent } from '../types';
+import { createEvent } from '../services/supabaseService';
+import { DEFAULT_FORMATEUR_OPTIONS, DEFAULT_LOCATION_OPTIONS } from '../utils/constants';
+import { useToast } from '../contexts/ToastContext';
 
 interface AddEventFormProps {
   onSuccess?: () => void;
 }
 
 export default function AddEventForm({ onSuccess }: AddEventFormProps) {
+  const { showToast } = useToast();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
   const [observations, setObservations] = useState('');
   const [formateurs, setFormateurs] = useState(['', '', '', '', '']);
   const [loading, setLoading] = useState(false);
-  
-  // Définir la date par défaut à aujourd'hui à 08:00
+
   const getDefaultTime = () => {
     const now = new Date();
     const userTimezoneOffset = now.getTimezoneOffset() * 60000;
     now.setHours(8, 0, 0, 0);
     return new Date(now.getTime() - userTimezoneOffset);
   };
-  
-  // Format the date for the input's default value
+
   const formattedDefaultTime = getDefaultTime().toISOString().slice(0, 16);
-  
-  // Initialize date state with the formatted default time
   const [date, setDate] = useState(formattedDefaultTime);
-
-  const formateurOptions = [
-    'Formateur A',
-    'Formateur B',
-    'Formateur C',
-    'Formateur D',
-    'Formateur E',
-    'Formateur F',
-    'Formateur G',
-  ];
-
-  const locationOptions = [
-    'Plateau technique Caissons',
-    'Plateau technique MaF',
-    'Salle de cours MLB',
-    'Salle de cours CFD',
-    'Friche batimentaire (Préciser le lieux)',
-    'Autre',
-  ];
 
   const handleFormateurChange = (index: number, value: string) => {
     const newFormateurs = [...formateurs];
@@ -56,156 +35,122 @@ export default function AddEventForm({ onSuccess }: AddEventFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
+
     try {
-      await addEvent({
+      await createEvent({
         title,
         description,
         location,
         observations,
         date: new Date(date),
         formateurs: formateurs.filter(f => f !== ''),
-        createdAt: new Date()
+        capacity: 12,
+        registrationClosesAt: null,
       });
       setTitle('');
-      setDate(getDefaultTime().toISOString().slice(0, 16)); // Reset to default time with correct timezone
+      setDate(getDefaultTime().toISOString().slice(0, 16));
       setDescription('');
       setLocation('');
       setObservations('');
       setFormateurs(['', '', '', '', '']);
+      showToast('Événement ajouté au calendrier.', 'success');
       onSuccess?.();
     } catch (error) {
       console.error('Error adding event:', error);
-      alert('Erreur lors de l\'ajout de l\'événement');
+      showToast(error instanceof Error ? error.message : "Erreur lors de l'ajout de l'événement", 'error');
     } finally {
       setLoading(false);
     }
   };
 
+  const inputClasses = "mt-1 block w-full rounded-squircle-sm bg-surface-container-highest px-4 py-3 text-body-lg text-on-surface placeholder:text-on-surface-variant focus:ring-2 focus:ring-primary/30 focus:outline-none transition-all";
+  const selectClasses = "block w-full rounded-squircle-sm bg-surface-container-highest px-4 py-3 text-body-md text-on-surface focus:ring-2 focus:ring-primary/30 focus:outline-none transition-all";
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 bg-white p-6 rounded-lg shadow-sm">
+    <form onSubmit={handleSubmit} className="space-y-4 surface-card p-5">
       <div>
-        <label htmlFor="title" className="block text-sm font-medium text-gray-700">Titre</label>
+        <label htmlFor="title" className="block text-label-lg text-on-surface">Titre</label>
         <input
-          type="text"
-          id="title"
-          value={title}
+          type="text" id="title" value={title}
           onChange={(e) => setTitle(e.target.value)}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-[#FF4500] focus:ring focus:ring-[#FF4500] focus:ring-opacity-50"
+          className={inputClasses}
           required
           placeholder="TdL-FO | Progression PSY | Feu réel | TdL | FO"
         />
       </div>
-      
+
       <div>
-        <label htmlFor="date" className="block text-sm font-medium text-gray-700">Date et heure</label>
+        <label htmlFor="date" className="block text-label-lg text-on-surface">Date et heure</label>
         <input
-          type="datetime-local"
-          id="date"
-          value={date}
+          type="datetime-local" id="date" value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-[#FF4500] focus:ring focus:ring-[#FF4500] focus:ring-opacity-50"
+          className={inputClasses}
           required
         />
       </div>
-      
+
       <div>
-        <label htmlFor="description" className="block text-sm font-medium text-gray-700">Description</label>
+        <label htmlFor="description" className="block text-label-lg text-on-surface">Description</label>
         <textarea
-          id="description"
-          value={description}
+          id="description" value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={3}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-[#FF4500] focus:ring focus:ring-[#FF4500] focus:ring-opacity-50"
+          className={inputClasses}
           required
           placeholder="FI SPP | FI SPV | FAE CE | FF | FMPA GPT | VIP"
         />
       </div>
-      
+
       <div>
-        <label htmlFor="location" className="block text-sm font-medium text-gray-700">Lieu de formation</label>
+        <label htmlFor="location" className="block text-label-lg text-on-surface">Lieu de formation</label>
         <select
-          id="location"
-          value={location}
+          id="location" value={location}
           onChange={(e) => setLocation(e.target.value)}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-[#FF4500] focus:ring focus:ring-[#FF4500] focus:ring-opacity-50"
+          className={selectClasses}
         >
           <option value="">Sélectionner un lieu</option>
-          {locationOptions.map((loc) => (
+          {DEFAULT_LOCATION_OPTIONS.map((loc) => (
             <option key={loc} value={loc}>{loc}</option>
           ))}
         </select>
       </div>
 
       <div>
-        <label htmlFor="observations" className="block text-sm font-medium text-gray-700">Observations</label>
+        <label htmlFor="observations" className="block text-label-lg text-on-surface">Observations</label>
         <textarea
-          id="observations"
-          value={observations}
+          id="observations" value={observations}
           onChange={(e) => setObservations(e.target.value)}
           rows={3}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-[#FF4500] focus:ring focus:ring-[#FF4500] focus:ring-opacity-50"
+          className={inputClasses}
           placeholder="Observations supplémentaires..."
         />
       </div>
-      
+
       <div className="space-y-3">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Formateurs</label>
+        <label className="block text-label-lg text-on-surface mb-2">Formateurs</label>
         <div className="grid grid-cols-2 gap-3">
-          {/* First row */}
-          <select
-            value={formateurs[0]}
-            onChange={(e) => handleFormateurChange(0, e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-[#FF4500] focus:ring focus:ring-[#FF4500] focus:ring-opacity-50"
-          >
-            <option value="">Formateur 1</option>
-            {formateurOptions.map((formateur) => (
-              <option key={formateur} value={formateur}>{formateur}</option>
-            ))}
-          </select>
-          <select
-            value={formateurs[1]}
-            onChange={(e) => handleFormateurChange(1, e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-[#FF4500] focus:ring focus:ring-[#FF4500] focus:ring-opacity-50"
-          >
-            <option value="">Formateur 2</option>
-            {formateurOptions.map((formateur) => (
-              <option key={formateur} value={formateur}>{formateur}</option>
-            ))}
-          </select>
-          
-          {/* Second row */}
-          <select
-            value={formateurs[2]}
-            onChange={(e) => handleFormateurChange(2, e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-[#FF4500] focus:ring focus:ring-[#FF4500] focus:ring-opacity-50"
-          >
-            <option value="">Formateur 3</option>
-            {formateurOptions.map((formateur) => (
-              <option key={formateur} value={formateur}>{formateur}</option>
-            ))}
-          </select>
-          <select
-            value={formateurs[3]}
-            onChange={(e) => handleFormateurChange(3, e.target.value)}
-            className="block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-[#FF4500] focus:ring focus:ring-[#FF4500] focus:ring-opacity-50"
-          >
-            <option value="">Formateur 4</option>
-            {formateurOptions.map((formateur) => (
-              <option key={formateur} value={formateur}>{formateur}</option>
-            ))}
-          </select>
+          {[0, 1, 2, 3].map(i => (
+            <select
+              key={i}
+              value={formateurs[i]}
+              onChange={(e) => handleFormateurChange(i, e.target.value)}
+              className={selectClasses}
+            >
+              <option value="">Formateur {i + 1}</option>
+              {DEFAULT_FORMATEUR_OPTIONS.map((formateur) => (
+                <option key={formateur} value={formateur}>{formateur}</option>
+              ))}
+            </select>
+          ))}
         </div>
-        
-        {/* Last formateur centered */}
         <div className="mt-3 flex justify-center">
           <select
             value={formateurs[4]}
             onChange={(e) => handleFormateurChange(4, e.target.value)}
-            className="block w-1/2 rounded-md border border-gray-300 px-3 py-2 focus:border-[#FF4500] focus:ring focus:ring-[#FF4500] focus:ring-opacity-50"
+            className={`${selectClasses} w-1/2`}
           >
             <option value="">Formateur 5</option>
-            {formateurOptions.map((formateur) => (
+            {DEFAULT_FORMATEUR_OPTIONS.map((formateur) => (
               <option key={formateur} value={formateur}>{formateur}</option>
             ))}
           </select>
@@ -215,9 +160,9 @@ export default function AddEventForm({ onSuccess }: AddEventFormProps) {
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-[#FF4500] text-white py-2 px-4 rounded-md hover:bg-[#FF4500]/90 disabled:opacity-50"
+        className="w-full btn-primary-gradient py-3 rounded-squircle-sm disabled:opacity-50 text-body-lg"
       >
-        {loading ? 'Ajout en cours...' : 'Ajouter l\'événement'}
+        {loading ? 'Ajout en cours...' : "Ajouter l'événement"}
       </button>
     </form>
   );
