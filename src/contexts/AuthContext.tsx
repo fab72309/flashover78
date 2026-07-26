@@ -9,14 +9,20 @@ import {
   signIn,
   signOut,
   signUp,
+  type SignUpResult,
 } from '../services/supabaseService';
 
 interface AuthContextType {
   user: AppUser | null;
   session: Session | null;
   loading: boolean;
-  signUpWithEmail: (email: string, password: string, firstName: string, lastName: string) => Promise<void>;
-  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (
+    email: string,
+    password: string,
+    firstName: string,
+    lastName: string
+  ) => Promise<SignUpResult>;
+  signInWithEmail: (email: string, password: string, rememberSession: boolean) => Promise<void>;
   refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -112,13 +118,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             firstName: firstName || devUser.firstName,
             lastName: lastName || devUser.lastName,
           });
-          return;
+          return {
+            user: null,
+            session: null,
+            requiresEmailConfirmation: false,
+          };
         }
 
-        const signedUpUser = await signUp(email, password, firstName, lastName);
-        setUser(await resolveAppUser(signedUpUser));
+        const signUpResult = await signUp(email, password, firstName, lastName);
+        setSession(signUpResult.session);
+
+        if (signUpResult.user && signUpResult.session) {
+          setUser(await resolveAppUser(signUpResult.user));
+        } else {
+          setUser(null);
+        }
+
+        return signUpResult;
       },
-      signInWithEmail: async (email, password) => {
+      signInWithEmail: async (email, password, rememberSession) => {
         if (isDevAuthBypassEnabled) {
           setUser({
             ...devUser,
@@ -127,7 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const signedInUser = await signIn(email, password);
+        const signedInUser = await signIn(email, password, rememberSession);
         setUser(await resolveAppUser(signedInUser));
       },
       refreshUser,

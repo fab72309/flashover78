@@ -1,11 +1,14 @@
 import { Link } from 'react-router-dom';
-import { User, Moon, LogOut, Sun } from 'lucide-react';
+import { User, Moon, LogOut, Sun, Users } from 'lucide-react';
 import { useAppVersion } from '../hooks/useAppVersion';
 import PageIntro from '../components/PageIntro';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
+import { APP_ROUTES } from '../utils/constants';
 
 export default function Settings() {
   const { isDarkMode, toggleDarkMode } = useTheme();
+  const { user } = useAuth();
   const appVersion = useAppVersion();
 
   return (
@@ -17,7 +20,7 @@ export default function Settings() {
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         <Link
-          to="/app/account"
+          to={APP_ROUTES.ACCOUNT}
           className="surface-card flex min-h-28 items-start gap-4 p-5 transition-all hover:shadow-ambient"
         >
           <div className="rounded-lg bg-primary/10 p-3">
@@ -34,6 +37,27 @@ export default function Settings() {
             </div>
           </div>
         </Link>
+
+        {user?.isAdmin ? (
+          <Link
+            to={APP_ROUTES.ADMIN_USERS}
+            className="surface-card flex min-h-28 items-start gap-4 p-5 transition-all hover:shadow-ambient"
+          >
+            <div className="rounded-lg bg-primary/10 p-3">
+              <Users size={22} className="text-primary" />
+            </div>
+            <div>
+              <h2 className="mb-1 text-headline-md text-on-surface">Utilisateurs</h2>
+              <p className="text-body-md text-on-surface-variant">
+                Invitez, créez et consultez les comptes autorisés dans l’application.
+              </p>
+              <div className="mt-2 flex items-center gap-1 text-label-sm uppercase text-primary">
+                <Users size={13} />
+                <span>Gérer les accès</span>
+              </div>
+            </div>
+          </Link>
+        ) : null}
 
         <section className="surface-card flex min-h-28 items-start justify-between gap-4 p-5">
           <div className="flex min-w-0 items-start gap-4">

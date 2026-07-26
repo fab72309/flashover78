@@ -80,6 +80,7 @@ export const APP_ROUTES = {
   RESOURCE_DETAIL: '/app/resources/document',
   DASHBOARD: '/app/dashboard',
   SETTINGS: '/app/settings',
+  ADMIN_USERS: '/app/settings/users',
   ACCOUNT: '/app/account',
   CARPOOL: '/app/carpool',
 } as const;

@@ -1,5 +1,6 @@
-import type { User as SupabaseUser } from '@supabase/supabase-js';
+import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { assertSupabaseConfigured, supabase } from '../lib/supabase';
+import { setRememberSessionPreference } from '../lib/supabase';
 import {
   APP_ROUTES,
   CARPOOL_REQUEST_STATUSES,
@@ -28,6 +29,7 @@ import type {
   TrainingRegistration,
   TrainingRegistrationStatus,
   TrainingSessionSummary,
+  ManagedUser,
 } from '../types';
 import { devUser, isDevAuthBypassEnabled } from '../utils/devAuth';
 import { getDocumentExpirationState } from '../utils/documents';
@@ -459,6 +461,9 @@ export async function getCurrentUser() {
   assertSupabaseConfigured();
   const { data, error } = await supabase.auth.getUser();
   if (error) {
+    if (error.name === 'AuthSessionMissingError') {
+      return null;
+    }
     throw error;
   }
   return data.user;
@@ -495,7 +500,14 @@ export async function resolveAppUser(user: SupabaseUser | null) {
   return deriveAppUser(user, profile);
 }
 
+export interface SignUpResult {
+  user: SupabaseUser | null;
+  session: Session | null;
+  requiresEmailConfirmation: boolean;
+}
+
 export async function signUp(email: string, password: string, firstName: string, lastName: string) {
+  setRememberSessionPreference(false);
   assertSupabaseConfigured();
 
   const { data, error } = await supabase.auth.signUp({
@@ -520,10 +532,15 @@ export async function signUp(email: string, password: string, firstName: string,
     await ensureProfileForUser(data.user);
   }
 
-  return data.user;
+  return {
+    user: data.user ?? null,
+    session: data.session ?? null,
+    requiresEmailConfirmation: Boolean(data.user && !data.session),
+  } satisfies SignUpResult;
 }
 
-export async function signIn(email: string, password: string) {
+export async function signIn(email: string, password: string, rememberSession = false) {
+  setRememberSessionPreference(rememberSession);
   assertSupabaseConfigured();
 
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -544,6 +561,101 @@ export async function signOut() {
   const { error } = await supabase.auth.signOut();
   if (error) {
     throw error;
+  }
+}
+
+function normalizeAdminUsersError(message: string) {
+  if (message.includes('FunctionsHttpError')) {
+    return new Error('Le service de gestion des utilisateurs a renvoyé une erreur.');
+  }
+  if (message.includes('Function not found')) {
+    return new Error('La fonction Supabase de gestion des utilisateurs n’est pas déployée.');
+  }
+  return new Error(message);
+}
+
+function mapManagedUser(row: {
+  id: string;
+  email: string;
+  display_name: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  is_admin?: boolean | null;
+  created_at?: string | null;
+  last_sign_in_at?: string | null;
+  email_confirmed_at?: string | null;
+}): ManagedUser {
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name,
+    firstName: row.first_name ?? null,
+    lastName: row.last_name ?? null,
+    isAdmin: Boolean(row.is_admin),
+    createdAt: row.created_at ? new Date(row.created_at) : null,
+    lastSignInAt: row.last_sign_in_at ? new Date(row.last_sign_in_at) : null,
+    emailConfirmedAt: row.email_confirmed_at ? new Date(row.email_confirmed_at) : null,
+  };
+}
+
+export async function listManagedUsers() {
+  assertSupabaseConfigured();
+
+  const { data, error } = await supabase.functions.invoke('admin-users', {
+    body: {
+      action: 'list',
+    },
+  });
+
+  if (error) {
+    throw normalizeAdminUsersError(error.message);
+  }
+
+  return ((data?.users ?? []) as Array<Parameters<typeof mapManagedUser>[0]>).map(
+    mapManagedUser
+  );
+}
+
+export async function inviteManagedUser(input: {
+  email: string;
+  firstName: string;
+  lastName: string;
+  isAdmin: boolean;
+}) {
+  assertSupabaseConfigured();
+
+  const { error } = await supabase.functions.invoke('admin-users', {
+    body: {
+      action: 'invite',
+      ...input,
+      redirectTo:
+        typeof window !== 'undefined' ? `${window.location.origin}${APP_ROUTES.LOGIN}` : undefined,
+    },
+  });
+
+  if (error) {
+    throw normalizeAdminUsersError(error.message);
+  }
+}
+
+export async function createManagedUser(input: {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  isAdmin: boolean;
+}) {
+  assertSupabaseConfigured();
+
+  const { error } = await supabase.functions.invoke('admin-users', {
+    body: {
+      action: 'create',
+      ...input,
+    },
+  });
+
+  if (error) {
+    throw normalizeAdminUsersError(error.message);
   }
 }
 
@@ -2029,6 +2141,24 @@ function normalizeAuthError(message: string) {
   }
   if (message.includes('Email not confirmed')) {
     return new Error('Confirmez votre email avant de vous connecter.');
+  }
+  if (
+    message.includes('email rate limit exceeded') ||
+    message.includes('over_email_send_rate_limit')
+  ) {
+    return new Error(
+      "Trop de demandes d'inscription ont été envoyées. Attendez quelques minutes avant de réessayer."
+    );
+  }
+  if (message.includes('For security purposes, you can only request this after')) {
+    return new Error(
+      "Une demande d'inscription vient déjà d'être envoyée. Attendez un instant avant de recommencer."
+    );
+  }
+  if (message.includes('Email address not authorized')) {
+    return new Error(
+      "Cette adresse email n'est pas autorisée par la configuration SMTP actuelle de Supabase."
+    );
   }
   return new Error(message);
 }
