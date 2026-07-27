@@ -69,6 +69,8 @@ export const DEFAULT_LOCATION_OPTIONS = [
 export const APP_ROUTES = {
   HOME: '/app',
   LOGIN: '/login',
+  FORGOT_PASSWORD: '/forgot-password',
+  RESET_PASSWORD: '/reset-password',
   CALENDAR: '/app/calendar',
   CALENDAR_ADD: '/app/calendar/add',
   TRAINING_SESSION: '/app/calendar/session',

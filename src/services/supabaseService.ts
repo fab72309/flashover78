@@ -33,6 +33,7 @@ import type {
 } from '../types';
 import { devUser, isDevAuthBypassEnabled } from '../utils/devAuth';
 import { getDocumentExpirationState } from '../utils/documents';
+import { getPasswordRecoveryRedirectUrl } from '../utils/authRecovery';
 
 type EventRow = {
   id: string;
@@ -561,6 +562,44 @@ export async function signOut() {
   const { error } = await supabase.auth.signOut();
   if (error) {
     throw error;
+  }
+}
+
+export async function requestPasswordReset(email: string) {
+  assertSupabaseConfigured();
+
+  const redirectTo =
+    typeof window !== 'undefined'
+      ? getPasswordRecoveryRedirectUrl(window.location.origin)
+      : undefined;
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+    redirectTo,
+  });
+
+  if (error) {
+    throw normalizeAuthError(error.message);
+  }
+}
+
+export async function updatePasswordFromRecovery(password: string) {
+  assertSupabaseConfigured();
+
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    throw normalizeAuthError(error.message);
+  }
+
+  const { error: signOutError } = await supabase.auth.signOut({ scope: 'global' });
+  if (signOutError) {
+    await supabase.auth.signOut({ scope: 'local' });
+  }
+}
+
+export async function cancelPasswordRecovery() {
+  assertSupabaseConfigured();
+  const { error } = await supabase.auth.signOut({ scope: 'local' });
+  if (error) {
+    throw normalizeAuthError(error.message);
   }
 }
 
@@ -2159,6 +2198,24 @@ function normalizeAuthError(message: string) {
     return new Error(
       "Cette adresse email n'est pas autorisée par la configuration SMTP actuelle de Supabase."
     );
+  }
+  if (
+    message.includes('Auth session missing') ||
+    message.includes('Invalid Refresh Token') ||
+    message.includes('refresh_token_not_found')
+  ) {
+    return new Error(
+      'Ce lien de réinitialisation est invalide ou a expiré. Demandez un nouveau lien.'
+    );
+  }
+  if (
+    message.includes('New password should be different') ||
+    message.includes('same password')
+  ) {
+    return new Error('Choisissez un mot de passe différent de votre ancien mot de passe.');
+  }
+  if (message.includes('Password should be at least')) {
+    return new Error('Le mot de passe ne respecte pas la longueur minimale requise.');
   }
   return new Error(message);
 }

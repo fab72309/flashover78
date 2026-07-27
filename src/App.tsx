@@ -26,6 +26,8 @@ const Settings = lazy(() => import('./pages/Settings'));
 const Account = lazy(() => import('./pages/Account'));
 const AdminUsers = lazy(() => import('./pages/AdminUsers'));
 const Login = lazy(() => import('./pages/Login'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const Carpool = lazy(() => import('./pages/Carpool'));
 const CarpoolTripDetail = lazy(() => import('./pages/CarpoolTripDetail'));
 const TrainingSessionDetail = lazy(() => import('./pages/TrainingSessionDetail'));
@@ -56,8 +58,10 @@ function App() {
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<RootRedirect />} />
-                <Route path={APP_ROUTES.LOGIN} element={<AuthLayout />}>
-                  <Route index element={<Login />} />
+                <Route element={<AuthLayout />}>
+                  <Route path={APP_ROUTES.LOGIN} element={<Login />} />
+                  <Route path={APP_ROUTES.FORGOT_PASSWORD} element={<ForgotPassword />} />
+                  <Route path={APP_ROUTES.RESET_PASSWORD} element={<ResetPassword />} />
                 </Route>
 
                 <Route path="/accueil" element={<Navigate to={APP_ROUTES.HOME} replace />} />
