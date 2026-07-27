@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Mail, Lock, AlertCircle, User } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAppVersion } from '../hooks/useAppVersion';
-import { LOGO_PATHS } from '../utils/constants';
+import { APP_ROUTES, LOGO_PATHS } from '../utils/constants';
 import { getRememberSessionPreference } from '../lib/supabase';
 
 export default function AuthForm() {
@@ -120,7 +121,17 @@ export default function AuthForm() {
         </div>
 
         <div>
-          <label className="block text-label-lg text-on-surface mb-1.5">Mot de passe</label>
+          <div className="mb-1.5 flex items-center justify-between gap-3">
+            <label className="block text-label-lg text-on-surface">Mot de passe</label>
+            {!isSignUp ? (
+              <Link
+                to={APP_ROUTES.FORGOT_PASSWORD}
+                className="text-label-md text-primary hover:underline"
+              >
+                Mot de passe oublié ?
+              </Link>
+            ) : null}
+          </div>
           <div className="relative">
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClasses} required minLength={6} />
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={18} />
