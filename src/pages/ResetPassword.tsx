@@ -6,11 +6,13 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { supabase } from '../lib/supabase';
 import {
   cancelPasswordRecovery,
+  exchangePasswordRecoveryToken,
   updatePasswordFromRecovery,
 } from '../services/supabaseService';
 import { useAppVersion } from '../hooks/useAppVersion';
 import {
   getRecoveryLinkError,
+  getRecoveryTokenHash,
   PASSWORD_MIN_LENGTH,
   validateNewPassword,
 } from '../utils/authRecovery';
@@ -31,6 +33,7 @@ export default function ResetPassword() {
   useEffect(() => {
     let isMounted = true;
     const urlError = getRecoveryLinkError(window.location.search, window.location.hash);
+    const tokenHash = getRecoveryTokenHash(window.location.search);
 
     if (urlError) {
       setLinkError(urlError);
@@ -48,20 +51,40 @@ export default function ResetPassword() {
       }
     });
 
-    void supabase.auth.getSession().then(({ data, error: sessionError }) => {
-      if (!isMounted) {
-        return;
-      }
+    const initializeRecoverySession = async () => {
+      try {
+        const session = tokenHash
+          ? await exchangePasswordRecoveryToken(tokenHash)
+          : (await supabase.auth.getSession()).data.session;
 
-      if (sessionError || !data.session) {
-        setLinkError(
-          'Ce lien de réinitialisation est invalide ou a expiré. Demandez un nouveau lien.'
-        );
-      } else {
-        setRecoverySession(data.session);
+        if (!isMounted) {
+          return;
+        }
+
+        if (!session) {
+          throw new Error('Recovery session unavailable');
+        }
+
+        setRecoverySession(session);
+        setLinkError(null);
+
+        if (tokenHash) {
+          window.history.replaceState(null, '', APP_ROUTES.RESET_PASSWORD);
+        }
+      } catch {
+        if (isMounted) {
+          setLinkError(
+            'Ce lien de réinitialisation est invalide ou a expiré. Demandez un nouveau lien.'
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setCheckingLink(false);
+        }
       }
-      setCheckingLink(false);
-    });
+    };
+
+    void initializeRecoverySession();
 
     return () => {
       isMounted = false;
