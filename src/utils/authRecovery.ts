@@ -6,6 +6,16 @@ export function getPasswordRecoveryRedirectUrl(origin: string) {
   return `${origin.replace(/\/+$/, '')}${APP_ROUTES.RESET_PASSWORD}`;
 }
 
+export function getRecoveryTokenHash(search: string) {
+  const params = new URLSearchParams(search);
+
+  if (params.get('type') !== 'recovery') {
+    return null;
+  }
+
+  return params.get('token_hash')?.trim() || null;
+}
+
 export function validateNewPassword(password: string, confirmation: string) {
   if (password.length < PASSWORD_MIN_LENGTH) {
     return `Le mot de passe doit contenir au moins ${PASSWORD_MIN_LENGTH} caractères.`;

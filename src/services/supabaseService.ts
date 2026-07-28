@@ -581,6 +581,23 @@ export async function requestPasswordReset(email: string) {
   }
 }
 
+export async function exchangePasswordRecoveryToken(tokenHash: string) {
+  assertSupabaseConfigured();
+
+  const { data, error } = await supabase.auth.verifyOtp({
+    token_hash: tokenHash,
+    type: 'recovery',
+  });
+
+  if (error || !data.session) {
+    throw normalizeAuthError(
+      error?.message ?? 'Ce lien de réinitialisation est invalide ou a expiré.'
+    );
+  }
+
+  return data.session;
+}
+
 export async function updatePasswordFromRecovery(password: string) {
   assertSupabaseConfigured();
 

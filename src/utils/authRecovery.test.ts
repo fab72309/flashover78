@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getPasswordRecoveryRedirectUrl,
   getRecoveryLinkError,
+  getRecoveryTokenHash,
   validateNewPassword,
 } from './authRecovery';
 
@@ -30,5 +31,13 @@ describe('password recovery helpers', () => {
     expect(getRecoveryLinkError('?error=access_denied', '')).toContain(
       'invalide ou a expiré'
     );
+  });
+
+  it('only accepts a password recovery token hash', () => {
+    expect(getRecoveryTokenHash('?token_hash=hashed-token&type=recovery')).toBe(
+      'hashed-token'
+    );
+    expect(getRecoveryTokenHash('?token_hash=hashed-token&type=email')).toBeNull();
+    expect(getRecoveryTokenHash('?type=recovery')).toBeNull();
   });
 });
