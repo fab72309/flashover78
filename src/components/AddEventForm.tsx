@@ -1,19 +1,64 @@
-import { useState } from 'react';
-import { createEvent } from '../services/supabaseService';
-import { DEFAULT_FORMATEUR_OPTIONS, DEFAULT_LOCATION_OPTIONS } from '../utils/constants';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  createEvent,
+  listProfiles,
+  updateEvent,
+} from '../services/supabaseService';
+import {
+  DEFAULT_LOCATION_OPTIONS,
+  TRAINER_LEVEL_LABELS,
+  TRAINER_LEVELS,
+  TRAINER_SLOT_LIMITS,
+} from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
+import type { CalendarEvent, CalendarFormateurAssignment, Profile, TrainerLevel } from '../types';
 
 interface AddEventFormProps {
   onSuccess?: () => void;
+  event?: CalendarEvent;
 }
 
-export default function AddEventForm({ onSuccess }: AddEventFormProps) {
+type FormateurSelections = Record<TrainerLevel, string[]>;
+
+function createEmptyFormateurSelections(): FormateurSelections {
+  return {
+    RSFR: ['', ''],
+    'FOR INC': ['', ''],
+    'FOR BAT': ['', '', '', ''],
+  };
+}
+
+function createInitialFormateurSelections(event?: CalendarEvent): FormateurSelections {
+  const selections = createEmptyFormateurSelections();
+
+  for (const assignment of event?.formateurAssignments ?? []) {
+    const levelSelections = selections[assignment.level];
+    const emptySlot = levelSelections.indexOf('');
+    if (emptySlot >= 0) {
+      levelSelections[emptySlot] = assignment.userId;
+    }
+  }
+
+  return selections;
+}
+
+function toLocalDateTimeValue(date: Date) {
+  const timezoneOffset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
+}
+
+export default function AddEventForm({ onSuccess, event }: AddEventFormProps) {
   const { showToast } = useToast();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [location, setLocation] = useState('');
-  const [observations, setObservations] = useState('');
-  const [formateurs, setFormateurs] = useState(['', '', '', '', '']);
+  const [title, setTitle] = useState(event?.title ?? '');
+  const [description, setDescription] = useState(event?.description ?? '');
+  const [location, setLocation] = useState(event?.location ?? '');
+  const [observations, setObservations] = useState(event?.observations ?? '');
+  const [formateurSelections, setFormateurSelections] = useState<FormateurSelections>(
+    () => createInitialFormateurSelections(event)
+  );
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(true);
+  const [profilesError, setProfilesError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const getDefaultTime = () => {
@@ -23,13 +68,87 @@ export default function AddEventForm({ onSuccess }: AddEventFormProps) {
     return new Date(now.getTime() - userTimezoneOffset);
   };
 
-  const formattedDefaultTime = getDefaultTime().toISOString().slice(0, 16);
+  const formattedDefaultTime = event
+    ? toLocalDateTimeValue(event.date)
+    : getDefaultTime().toISOString().slice(0, 16);
   const [date, setDate] = useState(formattedDefaultTime);
 
-  const handleFormateurChange = (index: number, value: string) => {
-    const newFormateurs = [...formateurs];
-    newFormateurs[index] = value;
-    setFormateurs(newFormateurs);
+  const legacyFormateurs = event?.formateurAssignments?.length
+    ? []
+    : event?.formateurs ?? [];
+  const selectedUserIds = useMemo(
+    () => new Set(Object.values(formateurSelections).flat().filter(Boolean)),
+    [formateurSelections]
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProfiles = async () => {
+      setProfilesLoading(true);
+      setProfilesError(null);
+
+      try {
+        const nextProfiles = await listProfiles();
+        if (isMounted) {
+          setProfiles(nextProfiles);
+        }
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : 'Impossible de charger les fonctions formateur.';
+        if (isMounted) {
+          setProfilesError(message);
+          showToast(message, 'error');
+        }
+      } finally {
+        if (isMounted) {
+          setProfilesLoading(false);
+        }
+      }
+    };
+
+    void loadProfiles();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [showToast]);
+
+  const handleFormateurChange = (level: TrainerLevel, index: number, value: string) => {
+    setFormateurSelections((current) => ({
+      ...current,
+      [level]: current[level].map((candidate, candidateIndex) => (
+        candidateIndex === index ? value : candidate
+      )),
+    }));
+  };
+
+  const getAvailableProfiles = (level: TrainerLevel, index: number) => {
+    const selectedForThisSlot = formateurSelections[level][index];
+    return profiles.filter((profile) => (
+      profile.trainerLevels.includes(level)
+      && (profile.id === selectedForThisSlot || !selectedUserIds.has(profile.id))
+    ));
+  };
+
+  const getSelectedAssignments = (): CalendarFormateurAssignment[] => {
+    return TRAINER_LEVELS.flatMap((level) => formateurSelections[level])
+      .filter(Boolean)
+      .map((userId) => {
+        const profile = profiles.find((candidate) => candidate.id === userId);
+        if (!profile) {
+          throw new Error('Un formateur sélectionné n’est plus disponible. Actualisez la page.');
+        }
+
+        return {
+          userId,
+          displayName: profile.displayName,
+          level: TRAINER_LEVELS.find((candidate) =>
+            formateurSelections[candidate].includes(userId)
+          ) ?? 'RSFR',
+        };
+      });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -37,23 +156,33 @@ export default function AddEventForm({ onSuccess }: AddEventFormProps) {
     setLoading(true);
 
     try {
-      await createEvent({
+      const formateurAssignments = getSelectedAssignments();
+      const eventInput = {
         title,
         description,
         location,
         observations,
         date: new Date(date),
-        formateurs: formateurs.filter(f => f !== ''),
-        capacity: 12,
-        registrationClosesAt: null,
-      });
-      setTitle('');
-      setDate(getDefaultTime().toISOString().slice(0, 16));
-      setDescription('');
-      setLocation('');
-      setObservations('');
-      setFormateurs(['', '', '', '', '']);
-      showToast('Événement ajouté au calendrier.', 'success');
+        formateurs: formateurAssignments.length > 0
+          ? formateurAssignments.map((assignment) => assignment.displayName)
+          : legacyFormateurs,
+        formateurAssignments,
+        capacity: event?.capacity ?? 12,
+        registrationClosesAt: event?.registrationClosesAt ?? null,
+      };
+
+      if (event) {
+        await updateEvent(event.id, eventInput);
+      } else {
+        await createEvent(eventInput);
+        setTitle('');
+        setDate(getDefaultTime().toISOString().slice(0, 16));
+        setDescription('');
+        setLocation('');
+        setObservations('');
+        setFormateurSelections(createEmptyFormateurSelections());
+      }
+      showToast(event ? 'Événement mis à jour.' : 'Événement ajouté au calendrier.', 'success');
       onSuccess?.();
     } catch (error) {
       console.error('Error adding event:', error);
@@ -126,43 +255,76 @@ export default function AddEventForm({ onSuccess }: AddEventFormProps) {
         />
       </div>
 
-      <div className="space-y-3">
-        <label className="block text-label-lg text-on-surface mb-2">Formateurs</label>
-        <div className="grid grid-cols-2 gap-3">
-          {[0, 1, 2, 3].map(i => (
-            <select
-              key={i}
-              value={formateurs[i]}
-              onChange={(e) => handleFormateurChange(i, e.target.value)}
-              className={selectClasses}
-            >
-              <option value="">Formateur {i + 1}</option>
-              {DEFAULT_FORMATEUR_OPTIONS.map((formateur) => (
-                <option key={formateur} value={formateur}>{formateur}</option>
-              ))}
-            </select>
+      <fieldset className="space-y-4">
+        <legend className="block text-label-lg text-on-surface">Formateurs</legend>
+        <p className="text-body-sm text-on-surface-variant">
+          Choisissez au maximum 2 RSFR, 2 FOR INC et 4 FOR BAT. Une personne ayant plusieurs fonctions apparaît dans chaque liste correspondante, mais ne peut être affectée qu’une seule fois à la même session.
+        </p>
+
+        {profilesLoading ? (
+          <p className="rounded-lg bg-surface-container-low p-3 text-body-md text-on-surface-variant">
+            Chargement des utilisateurs formateurs...
+          </p>
+        ) : profilesError ? (
+          <p className="rounded-lg bg-red-50 p-3 text-body-md text-red-700" role="alert">
+            {profilesError}
+          </p>
+        ) : profiles.length === 0 ? (
+          <p className="rounded-lg bg-surface-container-low p-3 text-body-md text-on-surface-variant">
+            Aucun utilisateur n’est encore disponible pour une affectation.
+          </p>
+        ) : null}
+
+        <div className="space-y-4">
+          {TRAINER_LEVELS.map((level) => (
+            <div key={level} className="rounded-squircle-sm bg-surface-container-low p-4">
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="text-body-lg font-semibold text-on-surface">
+                  {TRAINER_LEVEL_LABELS[level]}
+                </h3>
+                <span className="text-label-sm text-on-surface-variant">
+                  {TRAINER_SLOT_LIMITS[level]} place{TRAINER_SLOT_LIMITS[level] > 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {Array.from({ length: TRAINER_SLOT_LIMITS[level] }, (_, index) => (
+                  <label key={`${level}-${index}`} className="block">
+                    <span className="mb-1.5 block text-label-sm text-on-surface-variant">
+                      {TRAINER_LEVEL_LABELS[level]} {index + 1}
+                    </span>
+                    <select
+                      value={formateurSelections[level][index]}
+                      onChange={(e) => handleFormateurChange(level, index, e.target.value)}
+                      className={selectClasses}
+                      aria-label={`${TRAINER_LEVEL_LABELS[level]} ${index + 1}`}
+                    >
+                      <option value="">Sélectionner un utilisateur</option>
+                      {getAvailableProfiles(level, index).map((profile) => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
-        <div className="mt-3 flex justify-center">
-          <select
-            value={formateurs[4]}
-            onChange={(e) => handleFormateurChange(4, e.target.value)}
-            className={`${selectClasses} w-1/2`}
-          >
-            <option value="">Formateur 5</option>
-            {DEFAULT_FORMATEUR_OPTIONS.map((formateur) => (
-              <option key={formateur} value={formateur}>{formateur}</option>
-            ))}
-          </select>
-        </div>
-      </div>
+
+        {legacyFormateurs.length > 0 ? (
+          <p className="rounded-lg bg-amber-50 p-3 text-label-sm text-amber-800">
+            Cet événement contient encore les anciens noms « {legacyFormateurs.join(', ')} ». Une nouvelle affectation remplacera cette ancienne liste.
+          </p>
+        ) : null}
+      </fieldset>
 
       <button
         type="submit"
         disabled={loading}
         className="w-full btn-primary-gradient py-3 rounded-squircle-sm disabled:opacity-50 text-body-lg"
       >
-        {loading ? 'Ajout en cours...' : "Ajouter l'événement"}
+        {loading ? 'Enregistrement...' : event ? "Enregistrer les modifications" : "Ajouter l'événement"}
       </button>
     </form>
   );

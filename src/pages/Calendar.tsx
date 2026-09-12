@@ -12,13 +12,19 @@ import {
   Search,
   Sparkles,
 } from 'lucide-react';
+import FormateurAssignments from '../components/FormateurAssignments';
 import { useCollection } from '../hooks/useFirestore';
-import type { CalendarEvent } from '../types';
+import type { CalendarEvent, TrainerLevel } from '../types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import 'react-calendar/dist/Calendar.css';
-import { APP_ROUTES } from '../utils/constants';
+import {
+  APP_ROUTES,
+  TRAINER_LEVEL_LABELS,
+  TRAINER_LEVELS,
+} from '../utils/constants';
 import { useAuth } from '../contexts/AuthContext';
+import { canContribute } from '../utils/permissions';
 
 type ValuePiece = Date | null;
 type Value = ValuePiece | [ValuePiece, ValuePiece];
@@ -34,6 +40,7 @@ function CalendarPage() {
   const { documents: events, loading } = useCollection<CalendarEvent>('events');
   const [view, setView] = useState<'month' | 'week' | 'day'>('month');
   const [search, setSearch] = useState('');
+  const [trainerLevelFilter, setTrainerLevelFilter] = useState<TrainerLevel | 'all'>('all');
   const [currentDate, setCurrentDate] = useState<Date>(today);
   const dayContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -61,10 +68,22 @@ function CalendarPage() {
 
   const filteredEvents = events.filter((event) => {
     const query = search.toLowerCase();
-    return (
+    const formateurSearchText = [
+      ...(event.formateurAssignments ?? []).map((assignment) => (
+        `${assignment.displayName} ${assignment.level}`
+      )),
+      ...(event.formateurs ?? []),
+    ].join(' ').toLowerCase();
+    const matchesTrainerLevel = trainerLevelFilter === 'all'
+      || (event.formateurAssignments ?? []).some(
+        (assignment) => assignment.level === trainerLevelFilter
+      );
+
+    return matchesTrainerLevel && (
       event.title.toLowerCase().includes(query) ||
       (event.description && event.description.toLowerCase().includes(query)) ||
-      (event.location && event.location.toLowerCase().includes(query))
+      (event.location && event.location.toLowerCase().includes(query)) ||
+      formateurSearchText.includes(query)
     );
   });
 
@@ -184,15 +203,28 @@ function CalendarPage() {
               {viewButton('day', 'Jour')}
             </div>
 
-            <div className="relative min-w-0 flex-1 max-w-xl w-full md:w-auto">
-              <input
-                type="text"
-                placeholder="Rechercher un événement, un lieu, une formation"
-                className="w-full p-3 pl-11 bg-surface-container-highest rounded-full text-body-md text-on-surface placeholder:text-on-surface-variant"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-secondary" size={18} />
+            <div className="flex min-w-0 flex-1 max-w-3xl w-full gap-2 md:w-auto">
+              <div className="relative min-w-0 flex-1">
+                <input
+                  type="text"
+                  placeholder="Rechercher un événement, un lieu, une formation"
+                  className="w-full p-3 pl-11 bg-surface-container-highest rounded-full text-body-md text-on-surface placeholder:text-on-surface-variant"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-secondary" size={18} />
+              </div>
+              <select
+                value={trainerLevelFilter}
+                onChange={(event) => setTrainerLevelFilter(event.target.value as TrainerLevel | 'all')}
+                className="max-w-[12rem] rounded-full bg-surface-container-highest px-4 py-3 text-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
+                aria-label="Filtrer le calendrier par fonction formateur"
+              >
+                <option value="all">Toutes les fonctions</option>
+                {TRAINER_LEVELS.map((level) => (
+                  <option key={level} value={level}>{TRAINER_LEVEL_LABELS[level]}</option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
@@ -273,6 +305,7 @@ function CalendarPage() {
                       <EventMiniCard
                         key={event.id}
                         event={event}
+                        trainerLevelFilter={trainerLevelFilter}
                         onOpen={() => navigate(`${APP_ROUTES.TRAINING_SESSION}/${event.id}`)}
                         onCarpool={() => navigate(`${APP_ROUTES.CARPOOL}?eventId=${event.id}`)}
                       />
@@ -311,6 +344,7 @@ function CalendarPage() {
                     <EventAgendaCard
                       key={event.id}
                       event={event}
+                      trainerLevelFilter={trainerLevelFilter}
                       onOpen={() => navigate(`${APP_ROUTES.TRAINING_SESSION}/${event.id}`)}
                       onCarpool={() => navigate(`${APP_ROUTES.CARPOOL}?eventId=${event.id}`)}
                     />
@@ -415,6 +449,7 @@ function CalendarPage() {
                         <EventMiniCard
                           key={event.id}
                           event={event}
+                          trainerLevelFilter={trainerLevelFilter}
                           onOpen={() => navigate(`${APP_ROUTES.TRAINING_SESSION}/${event.id}`)}
                           onCarpool={() => navigate(`${APP_ROUTES.CARPOOL}?eventId=${event.id}`)}
                         />
@@ -489,6 +524,7 @@ function CalendarPage() {
                           key={event.id}
                           event={event}
                           compact
+                          trainerLevelFilter={trainerLevelFilter}
                           onOpen={() => navigate(`${APP_ROUTES.TRAINING_SESSION}/${event.id}`)}
                           onCarpool={() => navigate(`${APP_ROUTES.CARPOOL}?eventId=${event.id}`)}
                         />
@@ -502,7 +538,7 @@ function CalendarPage() {
         </section>
       )}
 
-      {user?.isAdmin && (
+      {canContribute(user) && (
         <div className="flex justify-end">
           <button
             onClick={() => navigate(APP_ROUTES.CALENDAR_ADD)}
@@ -532,11 +568,13 @@ function EventAgendaCard({
   onOpen,
   onCarpool,
   compact = false,
+  trainerLevelFilter = 'all',
 }: {
   event: CalendarEvent;
   onOpen: () => void;
   onCarpool: () => void;
   compact?: boolean;
+  trainerLevelFilter?: TrainerLevel | 'all';
 }) {
   return (
     <div className={`rounded-squircle-sm bg-surface-container p-4 ${compact ? 'space-y-2' : 'space-y-3'}`}>
@@ -561,6 +599,13 @@ function EventAgendaCard({
       {event.description && !compact && (
         <p className="text-body-md text-on-surface-variant line-clamp-2">{event.description}</p>
       )}
+
+      <FormateurAssignments
+        assignments={event.formateurAssignments}
+        legacyFormateurs={event.formateurs}
+        levelFilter={trainerLevelFilter}
+        compact={compact}
+      />
 
       <div className="flex flex-wrap gap-2">
         <button
@@ -588,16 +633,26 @@ function EventMiniCard({
   event,
   onOpen,
   onCarpool,
+  trainerLevelFilter = 'all',
 }: {
   event: CalendarEvent;
   onOpen: () => void;
   onCarpool: () => void;
+  trainerLevelFilter?: TrainerLevel | 'all';
 }) {
   return (
     <div className="rounded-squircle-sm bg-surface-container p-3">
       <div className="text-label-lg font-semibold text-on-surface">{event.title}</div>
       <div className="text-label-sm text-on-surface-variant mt-1">
         {format(event.date, 'HH:mm', { locale: fr })}
+      </div>
+      <div className="mt-2">
+        <FormateurAssignments
+          assignments={event.formateurAssignments}
+          legacyFormateurs={event.formateurs}
+          levelFilter={trainerLevelFilter}
+          compact
+        />
       </div>
       <div className="mt-2 flex flex-wrap gap-3">
         <button type="button" onClick={onOpen} className="text-label-sm font-semibold text-primary">

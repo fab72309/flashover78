@@ -10,11 +10,15 @@ export type CarpoolTripStatus = 'open' | 'full' | 'cancelled' | 'completed';
 export type CarpoolRequestStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
 export type TrainingRegistrationStatus = 'registered' | 'waitlisted' | 'cancelled';
 export type TrainingAttendanceStatus = 'pending' | 'present' | 'absent';
+export type AppRole = 'member' | 'contributor' | 'admin';
+export type TrainerLevel = 'RSFR' | 'FOR INC' | 'FOR BAT';
 
 export interface AppUser {
   id: string;
   email: string;
   displayName: string;
+  role: AppRole;
+  trainerLevels: TrainerLevel[];
   isAdmin: boolean;
   firstName?: string;
   lastName?: string;
@@ -27,6 +31,8 @@ export interface Profile {
   id: string;
   email: string;
   displayName: string;
+  role: AppRole;
+  trainerLevels: TrainerLevel[];
   isAdmin: boolean;
   firstName?: string | null;
   lastName?: string | null;
@@ -40,6 +46,8 @@ export interface ManagedUser {
   displayName: string;
   firstName?: string | null;
   lastName?: string | null;
+  role: AppRole;
+  trainerLevels: TrainerLevel[];
   isAdmin: boolean;
   createdAt?: Date | null;
   lastSignInAt?: Date | null;
@@ -53,10 +61,17 @@ export interface CalendarEvent {
   observations?: string | null;
   location?: string | null;
   formateurs?: string[];
+  formateurAssignments?: CalendarFormateurAssignment[];
   date: Date;
   capacity: number;
   registrationClosesAt?: Date | null;
   createdAt: Date;
+}
+
+export interface CalendarFormateurAssignment {
+  userId: string;
+  displayName: string;
+  level: TrainerLevel;
 }
 
 export interface TrainingSessionSummary {

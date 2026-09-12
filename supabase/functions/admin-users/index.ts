@@ -15,6 +15,15 @@ function jsonResponse(status: number, body: unknown) {
   })
 }
 
+const allowedRoles = new Set(['member', 'contributor', 'admin'])
+const allowedTrainerLevels = ['RSFR', 'FOR INC', 'FOR BAT'] as const
+
+function normalizeTrainerLevels(value: unknown) {
+  const candidates = Array.isArray(value) ? value.map((entry) => String(entry).trim().toUpperCase()) : []
+  const levels = allowedTrainerLevels.filter((level) => candidates.includes(level))
+  return levels.length > 0 ? levels : ['RSFR']
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -45,7 +54,7 @@ Deno.serve(async (request) => {
 
   const { data: profile, error: profileError } = await userClient
     .from('profiles')
-    .select('is_admin')
+    .select('role, is_admin, trainer_levels')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -53,7 +62,7 @@ Deno.serve(async (request) => {
     return jsonResponse(500, { error: profileError.message })
   }
 
-  if (!profile?.is_admin) {
+  if (profile?.role !== 'admin' && !profile?.is_admin) {
     return jsonResponse(403, { error: 'Action réservée aux administrateurs.' })
   }
 
@@ -82,7 +91,7 @@ Deno.serve(async (request) => {
     const { data: profiles, error: profilesError } = ids.length
       ? await adminClient
           .from('profiles')
-          .select('id, display_name, first_name, last_name, is_admin')
+          .select('id, display_name, first_name, last_name, role, is_admin, trainer_levels')
           .in('id', ids)
       : { data: [], error: null }
 
@@ -110,6 +119,8 @@ Deno.serve(async (request) => {
           display_name: displayName,
           first_name: firstName,
           last_name: lastName,
+          role: localProfile?.role ?? (localProfile?.is_admin ? 'admin' : 'member'),
+          trainer_levels: normalizeTrainerLevels(localProfile?.trainer_levels),
           is_admin: Boolean(localProfile?.is_admin),
           created_at: entry.created_at ?? null,
           last_sign_in_at: entry.last_sign_in_at ?? null,
@@ -119,11 +130,77 @@ Deno.serve(async (request) => {
     })
   }
 
+  if (action === 'update_trainer_levels') {
+    const userId = String(payload.userId ?? '').trim()
+    if (!userId) {
+      return jsonResponse(400, { error: 'Utilisateur manquant.' })
+    }
+
+    const { error: updateError } = await adminClient
+      .from('profiles')
+      .update({ trainer_levels: normalizeTrainerLevels(payload.trainerLevels) })
+      .eq('id', userId)
+
+    if (updateError) {
+      return jsonResponse(500, { error: updateError.message })
+    }
+
+    return jsonResponse(200, { success: true })
+  }
+
+  const role = String(payload.role ?? 'member')
+  if (!allowedRoles.has(role)) {
+    return jsonResponse(400, { error: 'Niveau d’accès invalide.' })
+  }
+
+  if (action === 'update_role') {
+    const userId = String(payload.userId ?? '').trim()
+    if (!userId) {
+      return jsonResponse(400, { error: 'Utilisateur manquant.' })
+    }
+
+    const { data: targetProfile, error: targetError } = await adminClient
+      .from('profiles')
+      .select('role, is_admin')
+      .eq('id', userId)
+      .maybeSingle()
+
+    if (targetError || !targetProfile) {
+      return jsonResponse(404, { error: targetError?.message ?? 'Utilisateur introuvable.' })
+    }
+
+    const targetIsAdmin = targetProfile.role === 'admin' || targetProfile.is_admin
+    if (targetIsAdmin && role !== 'admin') {
+      const { count, error: countError } = await adminClient
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('role', 'admin')
+
+      if (countError) {
+        return jsonResponse(500, { error: countError.message })
+      }
+
+      if ((count ?? 0) <= 1) {
+        return jsonResponse(409, { error: 'Le dernier administrateur ne peut pas être rétrogradé.' })
+      }
+    }
+
+    const { error: updateError } = await adminClient
+      .from('profiles')
+      .update({ role, is_admin: role === 'admin' })
+      .eq('id', userId)
+
+    if (updateError) {
+      return jsonResponse(500, { error: updateError.message })
+    }
+
+    return jsonResponse(200, { success: true })
+  }
+
   const email = String(payload.email ?? '').trim().toLowerCase()
   const firstName = String(payload.firstName ?? '').trim()
   const lastName = String(payload.lastName ?? '').trim()
   const displayName = [firstName, lastName].filter(Boolean).join(' ').trim() || email
-  const isAdmin = Boolean(payload.isAdmin)
 
   if (!email || !firstName || !lastName) {
     return jsonResponse(400, { error: 'Les informations utilisateur sont incomplètes.' })
@@ -151,7 +228,9 @@ Deno.serve(async (request) => {
         display_name: displayName,
         first_name: firstName,
         last_name: lastName,
-        is_admin: isAdmin,
+        trainer_levels: normalizeTrainerLevels(payload.trainerLevels),
+        role,
+        is_admin: role === 'admin',
       })
 
       if (upsertError) {
@@ -190,7 +269,9 @@ Deno.serve(async (request) => {
         display_name: displayName,
         first_name: firstName,
         last_name: lastName,
-        is_admin: isAdmin,
+        trainer_levels: normalizeTrainerLevels(payload.trainerLevels),
+        role,
+        is_admin: role === 'admin',
       })
 
       if (upsertError) {

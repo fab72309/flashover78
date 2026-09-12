@@ -47,6 +47,7 @@ import {
   getDocumentExpirationState,
   getResourceCategoryLabel,
 } from '../utils/documents';
+import { canContribute } from '../utils/permissions';
 
 export default function DocumentDetail() {
   const { id } = useParams();
@@ -401,7 +402,7 @@ export default function DocumentDetail() {
         </div>
       </section>
 
-      {user?.isAdmin ? (
+      {canContribute(user) ? (
         <section className="space-y-4 border-t border-outline-variant pt-6">
           <div>
             <p className="text-label-sm uppercase text-primary">Gestion responsable</p>

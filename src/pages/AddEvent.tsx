@@ -4,17 +4,18 @@ import AddEventForm from '../components/AddEventForm';
 import { APP_ROUTES } from '../utils/constants';
 import { useAuth } from '../contexts/AuthContext';
 import PageIntro from '../components/PageIntro';
+import { canContribute } from '../utils/permissions';
 
 export default function AddEvent() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  if (!user?.isAdmin) {
+  if (!canContribute(user)) {
     return (
       <div className="surface-card p-5">
         <h1 className="text-headline-md text-on-surface">Accès restreint</h1>
         <p className="text-body-md text-on-surface-variant mt-2">
-          Seuls les administrateurs peuvent ajouter des événements.
+          Cette action est réservée aux contributeurs et administrateurs.
         </p>
       </div>
     );
