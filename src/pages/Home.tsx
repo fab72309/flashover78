@@ -27,9 +27,12 @@ function getInitialInterfaceMode(): InterfaceMode {
     return 'desktop';
   }
 
-  return window.localStorage.getItem(INTERFACE_MODE_STORAGE_KEY) === 'mobile'
-    ? 'mobile'
-    : 'desktop';
+  const storedMode = window.localStorage.getItem(INTERFACE_MODE_STORAGE_KEY);
+  if (storedMode === 'mobile' || storedMode === 'desktop') {
+    return storedMode;
+  }
+
+  return window.matchMedia('(max-width: 1023px)').matches ? 'mobile' : 'desktop';
 }
 
 function Home() {
@@ -136,12 +139,21 @@ function Home() {
     <div className="space-y-5 fade-in lg:space-y-8">
       <section className="relative overflow-hidden rounded-[1.75rem] bg-surface-container-lowest px-5 py-5 shadow-ambient-sm sm:px-6 lg:rounded-[2.25rem] lg:px-8 lg:py-7">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_0%,rgba(173,44,0,0.16),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.92),rgba(238,238,240,0.72))]" />
-        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between lg:gap-5">
           <div className="max-w-3xl">
             <h1 className="text-display-sm text-on-surface lg:text-display-md">
               Accueil Flashover 78
             </h1>
           </div>
+          <button
+            type="button"
+            onClick={() => setInterfaceMode(interfaceMode === 'mobile' ? 'desktop' : 'mobile')}
+            className="inline-flex items-center gap-2 self-start rounded-full border border-outline-variant/70 bg-white/70 px-3 py-2 text-label-lg font-semibold text-on-surface-variant shadow-ambient-sm transition-colors hover:bg-white sm:self-auto lg:hidden"
+            aria-label={interfaceMode === 'mobile' ? 'Basculer vers l’interface PC' : 'Basculer vers l’interface mobile'}
+          >
+            {interfaceMode === 'mobile' ? <Monitor size={17} /> : <Smartphone size={17} />}
+            {interfaceMode === 'mobile' ? 'Interface PC' : 'Interface mobile'}
+          </button>
           <div
             className="hidden items-center gap-1 rounded-lg border border-outline-variant/70 bg-surface-container-lowest/80 p-1 shadow-ambient-sm lg:flex"
             role="group"
@@ -179,7 +191,7 @@ function Home() {
         </div>
       </section>
 
-      <section className={`space-y-3 ${interfaceMode === 'mobile' ? 'lg:mx-auto lg:max-w-xl' : 'lg:hidden'}`}>
+      <section className={interfaceMode === 'mobile' ? 'mx-auto w-full max-w-xl space-y-3' : 'hidden'}>
         {quickActions.map((action) => (
           <button
             key={action.route}
@@ -220,7 +232,7 @@ function Home() {
         ))}
       </section>
 
-      <section className={`${interfaceMode === 'desktop' ? 'hidden gap-6 lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]' : 'hidden'}`}>
+      <section className={interfaceMode === 'desktop' ? 'grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]' : 'hidden'}>
         <div className="space-y-5">
           <button
             onClick={() => navigate(APP_ROUTES.BRULAGE)}

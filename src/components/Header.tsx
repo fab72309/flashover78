@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, Settings } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { Menu } from 'lucide-react';
 import { APP_ROUTES, LOGO_PATHS } from '../utils/constants';
 
 interface HeaderProps {
@@ -10,7 +10,6 @@ interface HeaderProps {
 function Header({ onMenuClick }: HeaderProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate();
 
   const titles: { [key: string]: string } = {
     '/app': 'Accueil',
@@ -84,13 +83,6 @@ function Header({ onMenuClick }: HeaderProps) {
         </div>
       </div>
 
-      <button
-        onClick={() => navigate(APP_ROUTES.SETTINGS)}
-        className="p-2 rounded-squircle-sm hover:bg-surface-container-high transition-colors"
-        aria-label="Paramètres"
-      >
-        <Settings size={20} className="text-on-surface-variant" />
-      </button>
     </header>
   );
 }

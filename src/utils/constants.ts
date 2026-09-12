@@ -54,11 +54,11 @@ export const TRAINER_LEVEL_LABELS: Record<(typeof TRAINER_LEVELS)[number], strin
   'FOR BAT': 'FOR BAT',
 };
 export const TRAINER_LEVEL_DESCRIPTIONS: Record<(typeof TRAINER_LEVELS)[number], string> = {
-  RSFR: 'Responsable de la formation',
+  RSFR: 'Responsable, Sécurité Feu Réel',
   'FOR INC': 'Formateur incendie',
-  'FOR BAT': 'Formateur bâtimentaire',
+  'FOR BAT': 'Formateur Binôme d’Attaque',
 };
-export const TRAINER_SLOT_LIMITS: Record<(typeof TRAINER_LEVELS)[number], number> = {
+export const TRAINER_INITIAL_SLOT_COUNTS: Record<(typeof TRAINER_LEVELS)[number], number> = {
   RSFR: 2,
   'FOR INC': 2,
   'FOR BAT': 4,
