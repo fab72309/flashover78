@@ -7,6 +7,7 @@ import type {
 import { APP_ROUTES, TRAINER_LEVEL_LABELS, TRAINER_LEVELS } from './constants';
 
 export const MEDICAL_FOLLOWUP_TEMPLATE_PATH = '/templates/suivi-medical-formateur.pdf';
+export const MEDICAL_FOLLOWUP_RENDER_TEMPLATE_PATH = '/templates/suivi-medical-formateur-clean.pdf';
 export const MEDICAL_FOLLOWUP_DOCX_TEMPLATE_PATH = '/templates/suivi-medical-formateur.docx';
 export const MEDICAL_FOLLOWUP_ADMIN_EMAIL = 'flashover78@gmail.com';
 export const MEDICAL_FOLLOWUP_IMPLEMENTED_FUNCTIONS: readonly TrainerLevel[] = TRAINER_LEVELS;
