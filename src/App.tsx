@@ -20,6 +20,7 @@ const Brulage = lazy(() => import('./pages/Brulage'));
 const BrulageMlb = lazy(() => import('./pages/BrulageMlb'));
 const BrulageMaf = lazy(() => import('./pages/BrulageMaf'));
 const MedicalFollowUp = lazy(() => import('./pages/MedicalFollowUp'));
+const MainCourante = lazy(() => import('./pages/MainCourante'));
 const Resources = lazy(() => import('./pages/Resources'));
 const AddResource = lazy(() => import('./pages/AddResource'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -92,6 +93,7 @@ function App() {
                   <Route path="brulage/maf" element={<BrulageMaf />} />
                   <Route path="brulage/suivi-medical" element={<MedicalFollowUp />} />
                   <Route path="brulage/suivi-medical/:trainerLevel" element={<MedicalFollowUp />} />
+                  <Route path="brulage/main-courante" element={<MainCourante />} />
                   <Route path="resources" element={<Resources />} />
                   <Route path="resources/add" element={<AddResource />} />
                   <Route path="resources/document/:id" element={<DocumentDetail />} />

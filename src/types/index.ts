@@ -274,3 +274,66 @@ export interface MedicalFollowUpRecord extends MedicalFollowUpFormData {
   emailError?: string | null;
   updatedAt: Date;
 }
+
+export type MainCouranteSite =
+  | 'Montigny le Bretonneux'
+  | 'Poissy'
+  | 'Feux réels en friche bâtimentaire';
+export type MainCouranteWindStrength = '1' | '2' | '3' | '4' | '5';
+export type MainCouranteWindDirection = 'Arrière' | 'Avant' | 'Latéral';
+export type MainCouranteWeather = 'Pluie' | 'Soleil' | 'Couvert' | 'Neige';
+export type MainCouranteMontignySession =
+  | '1/2 journée TdL'
+  | '1/2 journée FO'
+  | 'Journée TdL / FO';
+export type MainCourantePoissySession =
+  | '1/2 journée Progression'
+  | 'Journée Progression'
+  | 'Journée MEA';
+export type MainCouranteFricheSession = 'FI' | 'FAE' | 'FMA' | 'FMA formateurs';
+export type MainCouranteSession =
+  | MainCouranteMontignySession
+  | MainCourantePoissySession
+  | MainCouranteFricheSession;
+export type MainCouranteTraining =
+  | 'FI SPV'
+  | 'FI SPP'
+  | 'FAE CE'
+  | 'FMPA'
+  | 'MEA'
+  | 'FMPA Formateur'
+  | 'Formation de formateurs';
+export type MainCouranteQuantity = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10';
+export type MainCouranteWasteLevel = '1' | '2' | '3' | '4' | '5';
+export type MainCouranteCartState = 'Vide' | 'OK';
+
+export interface MainCouranteFormData {
+  emailFormateur: string;
+  dateMainCourante: string;
+  vent: MainCouranteWindStrength | '';
+  sensDuVent: MainCouranteWindDirection | '';
+  meteo: MainCouranteWeather[];
+  formateurs: string[];
+  siteFormation: MainCouranteSite | '';
+  typeSession: MainCouranteSession | '';
+  formation: MainCouranteTraining | '';
+  citerneGaz: MainCouranteQuantity | '';
+  panneauxBois: MainCouranteQuantity | '';
+  palettes: MainCouranteQuantity | '';
+  masquesFfp3: MainCouranteQuantity | '';
+  gantsNitrile: MainCouranteQuantity | '';
+  benneDechet: MainCouranteWasteLevel | '';
+  chariotFoyerDemarrage: MainCouranteCartState[];
+  observationsDifficultes: string;
+  reparationsMateriel: string;
+}
+
+export interface MainCouranteRecord extends MainCouranteFormData {
+  id: string;
+  userId: string;
+  pdfStoragePath: string;
+  pdfFilename: string;
+  pdfFileSize: number;
+  createdAt: Date;
+  updatedAt: Date;
+}

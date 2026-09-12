@@ -35,6 +35,8 @@ import type {
   MedicalFollowUpEmailStatus,
   MedicalFollowUpFormData,
   MedicalFollowUpRecord,
+  MainCouranteFormData,
+  MainCouranteRecord,
   TrainerLevel,
 } from '../types';
 import { devUser, isDevAuthBypassEnabled } from '../utils/devAuth';
@@ -180,6 +182,38 @@ type MedicalFollowUpRow = {
   email_sent_at: string | null;
   email_provider_id: string | null;
   email_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type MainCouranteRow = {
+  id: string;
+  user_id: string;
+  pdf_storage_path: string;
+  pdf_filename: string;
+  pdf_file_size: number;
+  email_formateur: string;
+  date_main_courante: string;
+  vent: number | null;
+  sens_du_vent: MainCouranteFormData['sensDuVent'];
+  meteo: MainCouranteFormData['meteo'];
+  formateur_1: string | null;
+  formateur_2: string | null;
+  formateur_3: string | null;
+  formateur_4: string | null;
+  formateur_5: string | null;
+  site_formation: MainCouranteFormData['siteFormation'];
+  type_session: MainCouranteFormData['typeSession'];
+  formation: MainCouranteFormData['formation'];
+  citerne_gaz: number | null;
+  panneaux_bois: number | null;
+  palettes: number | null;
+  masques_ffp3: number | null;
+  gants_nitrile: number | null;
+  benne_dechet: number | null;
+  chariot_foyer_demarrage: MainCouranteFormData['chariotFoyerDemarrage'];
+  observations_difficultes: string | null;
+  reparations_materiel: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -354,6 +388,8 @@ let mockTrainingRegistrations: TrainingRegistration[] = [
 ];
 
 let mockMedicalFollowUps: MedicalFollowUpRecord[] = [];
+let mockMainCourantes: MainCouranteRecord[] = [];
+const mockMainCourantePdfs = new Map<string, Blob>();
 
 let mockManagedUsers: ManagedUser[] = [
   {
@@ -532,6 +568,42 @@ function mapMedicalFollowUp(row: MedicalFollowUpRow): MedicalFollowUpRecord {
   };
 }
 
+function mapMainCourante(row: MainCouranteRow): MainCouranteRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    pdfStoragePath: row.pdf_storage_path,
+    pdfFilename: row.pdf_filename,
+    pdfFileSize: row.pdf_file_size,
+    emailFormateur: row.email_formateur,
+    dateMainCourante: row.date_main_courante,
+    vent: row.vent ? String(row.vent) as MainCouranteRecord['vent'] : '',
+    sensDuVent: row.sens_du_vent ?? '',
+    meteo: row.meteo ?? [],
+    formateurs: [
+      row.formateur_1 ?? '',
+      row.formateur_2 ?? '',
+      row.formateur_3 ?? '',
+      row.formateur_4 ?? '',
+      row.formateur_5 ?? '',
+    ],
+    siteFormation: row.site_formation ?? '',
+    typeSession: row.type_session ?? '',
+    formation: row.formation ?? '',
+    citerneGaz: row.citerne_gaz ? String(row.citerne_gaz) as MainCouranteRecord['citerneGaz'] : '',
+    panneauxBois: row.panneaux_bois ? String(row.panneaux_bois) as MainCouranteRecord['panneauxBois'] : '',
+    palettes: row.palettes ? String(row.palettes) as MainCouranteRecord['palettes'] : '',
+    masquesFfp3: row.masques_ffp3 ? String(row.masques_ffp3) as MainCouranteRecord['masquesFfp3'] : '',
+    gantsNitrile: row.gants_nitrile ? String(row.gants_nitrile) as MainCouranteRecord['gantsNitrile'] : '',
+    benneDechet: row.benne_dechet ? String(row.benne_dechet) as MainCouranteRecord['benneDechet'] : '',
+    chariotFoyerDemarrage: row.chariot_foyer_demarrage ?? [],
+    observationsDifficultes: row.observations_difficultes ?? '',
+    reparationsMateriel: row.reparations_materiel ?? '',
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+}
+
 function deriveAppUser(user: SupabaseUser, profile?: Profile | null): AppUser {
   const metadata = user.user_metadata ?? {};
 
@@ -554,7 +626,12 @@ function deriveAppUser(user: SupabaseUser, profile?: Profile | null): AppUser {
   };
 }
 
-async function uploadPrivateFile(bucket: string, path: string, file: File) {
+async function uploadPrivateFile(
+  bucket: string,
+  path: string,
+  file: Blob,
+  options: { upsert?: boolean } = {},
+) {
   if (isDevAuthBypassEnabled) {
     return path;
   }
@@ -563,7 +640,8 @@ async function uploadPrivateFile(bucket: string, path: string, file: File) {
 
   const { error } = await supabase.storage.from(bucket).upload(path, file, {
     cacheControl: '3600',
-    upsert: true,
+    contentType: file.type || 'application/octet-stream',
+    upsert: options.upsert ?? true,
   });
 
   if (error) {
@@ -1032,6 +1110,200 @@ export async function getMyMedicalFollowUp(id: string, userId: string) {
   }
 
   return data ? mapMedicalFollowUp(data as MedicalFollowUpRow) : null;
+}
+
+function toNullableNumber(value: string) {
+  return value ? Number(value) : null;
+}
+
+function createUuid() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  if (typeof crypto === 'undefined' || typeof crypto.getRandomValues !== 'function') {
+    throw new Error('Le navigateur ne permet pas de créer l’identifiant du PDF.');
+  }
+
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function normalizeMainCouranteFilename(filename: string) {
+  const normalized = filename
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  return normalized.toLowerCase().endsWith('.pdf') ? normalized : `${normalized || 'main-courante'}.pdf`;
+}
+
+function getMainCourantePayload(
+  input: MainCouranteFormData,
+  userId: string,
+  id: string,
+  pdfStoragePath: string,
+  pdfFilename: string,
+  pdfFileSize: number,
+) {
+  return {
+    id,
+    user_id: userId,
+    pdf_storage_path: pdfStoragePath,
+    pdf_filename: pdfFilename,
+    pdf_file_size: pdfFileSize,
+    email_formateur: input.emailFormateur.trim().toLowerCase(),
+    date_main_courante: input.dateMainCourante,
+    vent: toNullableNumber(input.vent),
+    sens_du_vent: input.sensDuVent || null,
+    meteo: input.meteo,
+    formateur_1: input.formateurs[0]?.trim() || null,
+    formateur_2: input.formateurs[1]?.trim() || null,
+    formateur_3: input.formateurs[2]?.trim() || null,
+    formateur_4: input.formateurs[3]?.trim() || null,
+    formateur_5: input.formateurs[4]?.trim() || null,
+    site_formation: input.siteFormation,
+    type_session: input.typeSession || null,
+    formation: input.formation || null,
+    citerne_gaz: toNullableNumber(input.citerneGaz),
+    panneaux_bois: toNullableNumber(input.panneauxBois),
+    palettes: toNullableNumber(input.palettes),
+    masques_ffp3: toNullableNumber(input.masquesFfp3),
+    gants_nitrile: toNullableNumber(input.gantsNitrile),
+    benne_dechet: toNullableNumber(input.benneDechet),
+    chariot_foyer_demarrage: input.chariotFoyerDemarrage,
+    observations_difficultes: input.observationsDifficultes.trim() || null,
+    reparations_materiel: input.reparationsMateriel.trim() || null,
+  };
+}
+
+export interface MainCouranteSubmissionResult {
+  record: MainCouranteRecord;
+  document: Blob;
+  filename: string;
+}
+
+export async function createMainCourante(
+  input: MainCouranteFormData,
+  document: Blob,
+  filename: string,
+): Promise<MainCouranteSubmissionResult> {
+  const safeFilename = normalizeMainCouranteFilename(filename);
+
+  if (isDevAuthBypassEnabled) {
+    const now = new Date();
+    const id = createPreviewId('preview-main-courante');
+    const pdfStoragePath = `${devUser.id}/${id}/${safeFilename}`;
+    const record: MainCouranteRecord = {
+      ...input,
+      meteo: [...input.meteo],
+      formateurs: [...input.formateurs],
+      chariotFoyerDemarrage: [...input.chariotFoyerDemarrage],
+      id,
+      userId: devUser.id,
+      pdfStoragePath,
+      pdfFilename: safeFilename,
+      pdfFileSize: document.size,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockMainCourantes = [record, ...mockMainCourantes];
+    mockMainCourantePdfs.set(id, document);
+    return { record, document, filename: safeFilename };
+  }
+
+  assertSupabaseConfigured();
+  const currentUser = await getCurrentUser();
+  if (!currentUser) {
+    throw new Error('Authentification requise pour enregistrer la main courante.');
+  }
+
+  const id = createUuid();
+  const pdfStoragePath = `${currentUser.id}/${id}/${safeFilename}`;
+
+  try {
+    await uploadPrivateFile(
+      STORAGE_BUCKETS.MAIN_COURANTES,
+      pdfStoragePath,
+      document,
+      { upsert: false },
+    );
+
+    const { data, error } = await supabase
+      .from(TABLES.MAIN_COURANTES)
+      .insert(getMainCourantePayload(
+        input,
+        currentUser.id,
+        id,
+        pdfStoragePath,
+        safeFilename,
+        document.size,
+      ))
+      .select('*')
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    const record = mapMainCourante(data as MainCouranteRow);
+    return { record, document, filename: safeFilename };
+  } catch (error) {
+    try {
+      await removeUploadedFile(STORAGE_BUCKETS.MAIN_COURANTES, pdfStoragePath);
+    } catch (cleanupError) {
+      console.error('Main courante PDF cleanup failed', cleanupError);
+    }
+    throw error;
+  }
+}
+
+export async function listMyMainCourantes(userId: string) {
+  if (isDevAuthBypassEnabled) {
+    return mockMainCourantes
+      .filter((record) => record.userId === userId)
+      .sort((first, second) => second.createdAt.getTime() - first.createdAt.getTime());
+  }
+
+  assertSupabaseConfigured();
+  const { data, error } = await supabase
+    .from(TABLES.MAIN_COURANTES)
+    .select('*')
+    .eq('user_id', userId)
+    .order('date_main_courante', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as MainCouranteRow[]).map(mapMainCourante);
+}
+
+export async function getMainCourantePdfBlob(record: MainCouranteRecord) {
+  if (isDevAuthBypassEnabled) {
+    const document = mockMainCourantePdfs.get(record.id);
+    if (!document) {
+      throw new Error('Le PDF de cette main courante est indisponible dans le mode de démonstration.');
+    }
+    return document;
+  }
+
+  assertSupabaseConfigured();
+  const { data, error } = await supabase.storage
+    .from(STORAGE_BUCKETS.MAIN_COURANTES)
+    .download(record.pdfStoragePath);
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
 }
 
 function normalizeAdminUsersError(message: string) {
