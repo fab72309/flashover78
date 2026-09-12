@@ -31,15 +31,14 @@ function Brulage() {
           subtitle="Centralisez les formulaires, le suivi terrain et les documents utiles pour les séquences de brûlage."
         />
 
-        <a
-          href="https://forms.gle/UkR2NHodKJHswmAV6"
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={() => navigate(APP_ROUTES.MAIN_COURANTE)}
           className="w-full btn-primary-gradient py-6 rounded-squircle flex items-center justify-center relative active:scale-[0.98] font-bold text-xl gap-3"
         >
           <FileText size={22} />
           MAIN COURANTE
-        </a>
+        </button>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <a

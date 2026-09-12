@@ -13,6 +13,7 @@ import {
   Route,
   Search,
   Users,
+  X,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -23,6 +24,7 @@ import {
   cancelTrip,
   cancelTripRequest,
   createTrip,
+  createTripRequest,
   listEvents,
   listMyRequests,
   listMyTrips,
@@ -42,6 +44,12 @@ const initialTripForm = {
   luggageNote: '',
   priceNote: '',
   notes: '',
+};
+
+const initialRequestForm = {
+  tripId: '',
+  seatsRequested: 1,
+  message: '',
 };
 
 function statusBadge(status: CarpoolTrip['status']) {
@@ -69,10 +77,12 @@ export default function Carpool() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showTripForm, setShowTripForm] = useState(false);
+  const [showRequestForm, setShowRequestForm] = useState(false);
   const [tripForm, setTripForm] = useState(() => ({
     ...initialTripForm,
     eventId: searchParams.get('eventId') ?? '',
   }));
+  const [requestForm, setRequestForm] = useState(initialRequestForm);
   const [saving, setSaving] = useState(false);
   const [filters, setFilters] = useState({
     search: '',
@@ -135,6 +145,29 @@ export default function Carpool() {
     });
   }, [filters, trips]);
 
+  const requestableTrips = useMemo(
+    () => trips.filter((trip) => (
+      trip.driverId !== user?.id &&
+      trip.status === 'open' &&
+      trip.availableSeats > 0 &&
+      !myRequests.some((request) => (
+        request.tripId === trip.id && (request.status === 'pending' || request.status === 'accepted')
+      ))
+    )),
+    [myRequests, trips, user?.id]
+  );
+
+  const selectedRequestTrip = requestableTrips.find((trip) => trip.id === requestForm.tripId) ?? null;
+
+  const openRequestForm = (tripId?: string) => {
+    setRequestForm({
+      ...initialRequestForm,
+      tripId: tripId ?? requestableTrips[0]?.id ?? '',
+    });
+    setShowTripForm(false);
+    setShowRequestForm(true);
+  };
+
   const handleTripSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
@@ -169,6 +202,39 @@ export default function Carpool() {
     } catch (err) {
       console.error(err);
       showToast(err instanceof Error ? err.message : 'Impossible de créer le trajet', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRequestSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !selectedRequestTrip) {
+      return;
+    }
+
+    const seatsRequested = Number(requestForm.seatsRequested);
+    if (!Number.isInteger(seatsRequested) || seatsRequested < 1 || seatsRequested > selectedRequestTrip.availableSeats) {
+      showToast('Le nombre de places demandé n’est pas disponible.', 'error');
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      await createTripRequest({
+        tripId: selectedRequestTrip.id,
+        requesterId: user.id,
+        seatsRequested,
+        message: requestForm.message,
+      });
+      setRequestForm(initialRequestForm);
+      setShowRequestForm(false);
+      await loadData();
+      showToast('Demande envoyée au conducteur.', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast(err instanceof Error ? err.message : 'Impossible d’envoyer la demande', 'error');
     } finally {
       setSaving(false);
     }
@@ -223,6 +289,15 @@ export default function Carpool() {
               </button>
               <button
                 type="button"
+                onClick={() => (showRequestForm ? setShowRequestForm(false) : openRequestForm())}
+                className="px-4 py-3 rounded-squircle-sm bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex items-center gap-2"
+                aria-expanded={showRequestForm}
+              >
+                <MessageSquarePlus size={18} />
+                Demander un trajet
+              </button>
+              <button
+                type="button"
                 onClick={() => setShowTripForm((prev) => !prev)}
                 className="px-4 py-3 rounded-squircle-sm btn-primary-gradient text-white flex items-center gap-2"
               >
@@ -270,6 +345,92 @@ export default function Carpool() {
           </div>
         </div>
       </section>
+
+      {showRequestForm && (
+        <section className="surface-card p-5 space-y-4" aria-labelledby="request-trip-title">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-primary">
+                <MessageSquarePlus size={18} />
+                <h2 id="request-trip-title" className="text-headline-md text-on-surface">Demander un trajet</h2>
+              </div>
+              <p className="text-body-md text-on-surface-variant mt-1">
+                Choisissez une offre ouverte, indiquez le nombre de places souhaité et laissez un message au conducteur.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowRequestForm(false)}
+              className="p-2 rounded-squircle-sm text-on-surface-variant hover:bg-surface-container transition-colors"
+              aria-label="Fermer la demande de trajet"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          {requestableTrips.length === 0 ? (
+            <div className="rounded-squircle-sm bg-surface-container p-4 text-body-md text-on-surface-variant">
+              Aucun trajet ouvert proposé par un autre formateur n’est disponible pour le moment. Une demande se fait à partir d’une offre publiée.
+            </div>
+          ) : (
+            <form onSubmit={handleRequestSubmit} className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Trajet souhaité">
+                  <select
+                    value={requestForm.tripId}
+                    onChange={(e) => setRequestForm((current) => ({
+                      ...current,
+                      tripId: e.target.value,
+                      seatsRequested: 1,
+                    }))}
+                    className="w-full rounded-squircle-sm bg-surface-container-highest px-4 py-3 text-on-surface"
+                    required
+                  >
+                    <option value="">Sélectionner un trajet</option>
+                    {requestableTrips.map((trip) => (
+                      <option key={trip.id} value={trip.id}>
+                        {trip.departureCity} → {trip.arrivalLabel} · {format(trip.departureDatetime, "d MMM à HH:mm", { locale: fr })} · {trip.driverName}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field label="Nombre de places">
+                  <input
+                    type="number"
+                    min={1}
+                    max={selectedRequestTrip?.availableSeats || 1}
+                    value={requestForm.seatsRequested}
+                    onChange={(e) => setRequestForm((current) => ({ ...current, seatsRequested: Number(e.target.value) }))}
+                    className="w-full rounded-squircle-sm bg-surface-container-highest px-4 py-3 text-on-surface"
+                    required
+                  />
+                </Field>
+              </div>
+
+              <Field label="Message au conducteur">
+                <textarea
+                  rows={3}
+                  value={requestForm.message}
+                  onChange={(e) => setRequestForm((current) => ({ ...current, message: e.target.value }))}
+                  className="w-full rounded-squircle-sm bg-surface-container-highest px-4 py-3 text-on-surface"
+                  placeholder="Précisions de départ, matériel, contrainte horaire..."
+                />
+              </Field>
+
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={saving || !selectedRequestTrip}
+                  className="px-5 py-3 rounded-squircle-sm btn-primary-gradient text-white disabled:opacity-50"
+                >
+                  {saving ? 'Envoi...' : 'Envoyer la demande'}
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+      )}
 
       {showTripForm && (
         <form onSubmit={handleTripSubmit} className="surface-card p-5 space-y-4">
@@ -411,6 +572,9 @@ export default function Carpool() {
                   key={trip.id}
                   trip={trip}
                   onOpen={() => navigate(`${APP_ROUTES.CARPOOL}/${trip.id}`)}
+                  onRequest={requestableTrips.some((candidate) => candidate.id === trip.id)
+                    ? () => openRequestForm(trip.id)
+                    : undefined}
                 />
               ))
             )}
@@ -531,7 +695,15 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
   );
 }
 
-function TripCard({ trip, onOpen }: { trip: CarpoolTrip; onOpen: () => void }) {
+function TripCard({
+  trip,
+  onOpen,
+  onRequest,
+}: {
+  trip: CarpoolTrip;
+  onOpen: () => void;
+  onRequest?: () => void;
+}) {
   return (
     <article className="surface-card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -565,9 +737,11 @@ function TripCard({ trip, onOpen }: { trip: CarpoolTrip; onOpen: () => void }) {
       </div>
 
       <div className="mt-5 flex flex-wrap gap-2">
-        <button type="button" onClick={onOpen} className="px-4 py-2.5 rounded-squircle-sm btn-primary-gradient text-white">
-          Demander un trajet
-        </button>
+        {onRequest && (
+          <button type="button" onClick={onRequest} className="px-4 py-2.5 rounded-squircle-sm btn-primary-gradient text-white">
+            Demander un trajet
+          </button>
+        )}
         <button type="button" onClick={onOpen} className="px-4 py-2.5 rounded-squircle-sm bg-surface-container text-on-surface">
           Voir le détail
         </button>

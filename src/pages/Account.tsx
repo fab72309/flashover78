@@ -7,6 +7,7 @@ import PageIntro from '../components/PageIntro';
 import { useToast } from '../contexts/ToastContext';
 import TrainingHistoryPanel from '../components/TrainingHistoryPanel';
 import MedicalFollowUpHistoryPanel from '../components/MedicalFollowUpHistoryPanel';
+import MainCouranteHistoryPanel from '../components/MainCouranteHistoryPanel';
 
 export default function Account() {
   const { user, logout } = useAuth();
@@ -108,6 +109,7 @@ export default function Account() {
 
       {user ? <TrainingHistoryPanel userId={user.id} /> : null}
       {user ? <MedicalFollowUpHistoryPanel userId={user.id} /> : null}
+      {user ? <MainCouranteHistoryPanel userId={user.id} /> : null}
 
     </div>
   );

@@ -13,12 +13,14 @@ export const TABLES = {
   TRAINING_REGISTRATIONS: 'training_registrations',
   TRAINING_AUDIT_LOG: 'training_audit_log',
   MEDICAL_FOLLOW_UPS: 'medical_follow_ups',
+  MAIN_COURANTES: 'main_courantes',
 } as const;
 
 export const STORAGE_BUCKETS = {
   SDIS78_DOCUMENTS: 'sdis78-documents',
   LECTURES_DOCUMENTS: 'lectures-documents',
   BRULAGE_DOCUMENTS: 'brulage-documents',
+  MAIN_COURANTES: 'main-courantes',
   RESOURCES: 'resources',
 } as const;
 
@@ -104,6 +106,7 @@ export const APP_ROUTES = {
   ACCOUNT: '/app/account',
   CARPOOL: '/app/carpool',
   MEDICAL_FOLLOWUP: '/app/brulage/suivi-medical',
+  MAIN_COURANTE: '/app/brulage/main-courante',
 } as const;
 
 export const DEMO_PHONE_NUMBER = '06 00 00 00 00';
