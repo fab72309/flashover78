@@ -2,7 +2,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { MedicalFollowUpFormData } from '../types';
 import {
   formatMedicalFollowUpDate,
-  MEDICAL_FOLLOWUP_RENDER_TEMPLATE_PATH,
+  MEDICAL_FOLLOWUP_RENDER_TEMPLATE_URL,
   isMedicalFollowUpLocationWithDetails,
 } from './medicalFollowUp';
 
@@ -228,7 +228,7 @@ export async function renderMedicalFollowUpPdf(
   data: MedicalFollowUpFormData,
   options: { isEvolution?: boolean } = {},
 ) {
-  const response = await fetch(MEDICAL_FOLLOWUP_RENDER_TEMPLATE_PATH);
+  const response = await fetch(MEDICAL_FOLLOWUP_RENDER_TEMPLATE_URL, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error('Le modèle PDF de fiche de suivi médical est indisponible.');
   }

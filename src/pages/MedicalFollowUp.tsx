@@ -144,15 +144,21 @@ export default function MedicalFollowUp() {
     setSubmitting(true);
     setResult(null);
 
+    let pdfOpened = false;
     try {
       const isEvolution = editingRecord !== null;
       const document = await renderMedicalFollowUpPdf(form, { isEvolution });
       const filename = getMedicalFollowUpFilename(form, isEvolution);
+      if (previewWindow && !previewWindow.closed) {
+        pdfOpened = openMedicalFollowUpPdf(document, filename, previewWindow);
+      }
       const submission = editingRecord
         ? await updateMedicalFollowUp(editingRecord.id, form, document, filename)
         : await createMedicalFollowUp(form, document, filename);
       setResult(submission);
-      openMedicalFollowUpPdf(document, filename, previewWindow);
+      if (!pdfOpened) {
+        openMedicalFollowUpPdf(document, filename);
+      }
       showToast(
         submission.deliveryStatus === 'sent'
           ? `${isEvolution ? 'L’évolution' : 'La fiche'} a été enregistrée et envoyée par email.`
@@ -161,7 +167,9 @@ export default function MedicalFollowUp() {
       );
     } catch (error) {
       console.error(error);
-      previewWindow?.close();
+      if (!pdfOpened) {
+        previewWindow?.close();
+      }
       showToast(
         error instanceof Error ? error.message : 'Impossible d’enregistrer le suivi médical.',
         'error',

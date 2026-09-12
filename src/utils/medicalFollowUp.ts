@@ -8,6 +8,7 @@ import { APP_ROUTES, TRAINER_LEVEL_LABELS, TRAINER_LEVELS } from './constants';
 
 export const MEDICAL_FOLLOWUP_TEMPLATE_PATH = '/templates/suivi-medical-formateur.pdf';
 export const MEDICAL_FOLLOWUP_RENDER_TEMPLATE_PATH = '/templates/suivi-medical-formateur-clean.pdf';
+export const MEDICAL_FOLLOWUP_RENDER_TEMPLATE_URL = `${MEDICAL_FOLLOWUP_RENDER_TEMPLATE_PATH}?v=${encodeURIComponent(import.meta.env.VITE_APP_VERSION || 'current')}`;
 export const MEDICAL_FOLLOWUP_DOCX_TEMPLATE_PATH = '/templates/suivi-medical-formateur.docx';
 export const MEDICAL_FOLLOWUP_ADMIN_EMAIL = 'flashover78@gmail.com';
 export const MEDICAL_FOLLOWUP_IMPLEMENTED_FUNCTIONS: readonly TrainerLevel[] = TRAINER_LEVELS;
@@ -210,6 +211,10 @@ export function downloadMedicalFollowUp(documentBlob: Blob, filename: string) {
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.setAttribute('aria-hidden', 'true');
+  link.style.display = 'none';
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -253,11 +258,28 @@ export function openMedicalFollowUpPdf(
   targetWindow?: Window | null,
 ) {
   const url = URL.createObjectURL(documentBlob);
-  const openedWindow = targetWindow ?? window.open('', '_blank');
+  const openedWindow = targetWindow && !targetWindow.closed
+    ? targetWindow
+    : targetWindow === undefined
+      ? window.open('', '_blank')
+      : null;
 
   if (!openedWindow) {
-    downloadMedicalFollowUp(documentBlob, filename);
-    URL.revokeObjectURL(url);
+    // Mobile browsers may block a second window after an async PDF build and
+    // may ignore the download attribute for blob URLs. A same-tab link is the
+    // reliable last resort: browsers that support downloads save the file,
+    // while mobile PDF viewers display it and offer Save/Share actions.
+    const fallbackLink = document.createElement('a');
+    fallbackLink.href = url;
+    fallbackLink.download = filename;
+    fallbackLink.target = '_self';
+    fallbackLink.rel = 'noopener noreferrer';
+    fallbackLink.setAttribute('aria-hidden', 'true');
+    fallbackLink.style.display = 'none';
+    document.body.appendChild(fallbackLink);
+    fallbackLink.click();
+    fallbackLink.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     return false;
   }
 
