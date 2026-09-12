@@ -12,6 +12,7 @@ export const TABLES = {
   CARPOOL_REQUESTS: 'carpool_requests',
   TRAINING_REGISTRATIONS: 'training_registrations',
   TRAINING_AUDIT_LOG: 'training_audit_log',
+  MEDICAL_FOLLOW_UPS: 'medical_follow_ups',
 } as const;
 
 export const STORAGE_BUCKETS = {
@@ -102,6 +103,7 @@ export const APP_ROUTES = {
   ADMIN_USERS: '/app/settings/users',
   ACCOUNT: '/app/account',
   CARPOOL: '/app/carpool',
+  MEDICAL_FOLLOWUP: '/app/brulage/suivi-medical',
 } as const;
 
 export const DEMO_PHONE_NUMBER = '06 00 00 00 00';

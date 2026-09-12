@@ -1,15 +1,27 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Wrench, HeartPulse, Flame } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import { APP_ROUTES } from '../utils/constants';
 import PageIntro from '../components/PageIntro';
-
-const MEDICAL_FOLLOWUP_FORM_URL =
-  'https://docs.google.com/forms/d/1I2Jt9WSavYKhifDfZa7-DpHyclvl1fW7NgH3AbT-Zks/prefill';
+import { getMedicalFollowUpFunctionOptions, getMedicalFollowUpRoute } from '../utils/medicalFollowUp';
 
 function Brulage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [isMedicalPopupOpen, setIsMedicalPopupOpen] = useState(false);
+  const medicalFunctionOptions = getMedicalFollowUpFunctionOptions(user);
+  const singleImplementedFunction = medicalFunctionOptions.length === 1
+    && medicalFunctionOptions[0].implemented;
+
+  const openMedicalFollowUp = () => {
+    if (singleImplementedFunction) {
+      navigate(getMedicalFollowUpRoute(medicalFunctionOptions[0].level));
+      return;
+    }
+
+    setIsMedicalPopupOpen(true);
+  };
 
   return (
     <>
@@ -41,7 +53,7 @@ function Brulage() {
           </a>
           <button
             type="button"
-            onClick={() => setIsMedicalPopupOpen(true)}
+            onClick={openMedicalFollowUp}
             className="w-full bg-surface-container-lowest text-on-surface py-6 rounded-squircle flex items-center justify-center text-center relative shadow-ambient-sm transition-all hover:shadow-ambient active:scale-[0.98] font-bold text-lg gap-2"
           >
             <HeartPulse size={20} className="text-primary" />
@@ -85,33 +97,37 @@ function Brulage() {
                 Suivi médical
               </h2>
               <p className="text-sm text-on-surface-variant">
-                Sélectionnez le formulaire souhaité.
+                Sélectionnez une fonction associée à votre compte.
               </p>
             </div>
 
             <div className="flex flex-col gap-3">
-              <button
-                type="button"
-                disabled
-                className="w-full rounded-squircle-sm bg-orange-300 px-4 py-4 text-white font-bold text-lg opacity-95"
-              >
-                FORBAT
-              </button>
-              <a
-                href={MEDICAL_FOLLOWUP_FORM_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full rounded-squircle-sm bg-orange-500 px-4 py-4 flex items-center justify-center font-bold text-lg text-white"
-              >
-                FOR INC
-              </a>
-              <button
-                type="button"
-                disabled
-                className="w-full rounded-squircle-sm bg-orange-700 px-4 py-4 text-white font-bold text-lg opacity-95"
-              >
-                RSFR
-              </button>
+              {medicalFunctionOptions.length === 0 ? (
+                <p className="rounded-squircle-sm bg-surface-container px-4 py-3 text-sm text-on-surface-variant">
+                  Aucune fonction n’est associée à ce compte.
+                </p>
+              ) : medicalFunctionOptions.map((option) => (
+                <button
+                  key={option.level}
+                  type="button"
+                  disabled={!option.implemented}
+                  onClick={() => {
+                    if (!option.implemented) return;
+                    setIsMedicalPopupOpen(false);
+                    navigate(getMedicalFollowUpRoute(option.level));
+                  }}
+                  className={`w-full rounded-squircle-sm px-4 py-4 flex items-center justify-between gap-3 font-bold text-lg text-white transition-opacity ${
+                    option.implemented
+                      ? 'bg-orange-500 hover:opacity-90'
+                      : 'bg-surface-container-high text-on-surface-variant opacity-80'
+                  }`}
+                >
+                  <span>{option.label}</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide">
+                    {option.implemented ? 'Ouvrir' : 'À venir'}
+                  </span>
+                </button>
+              ))}
             </div>
 
             <button

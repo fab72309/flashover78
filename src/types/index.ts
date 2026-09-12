@@ -212,3 +212,65 @@ export interface CarpoolFilters {
   onlyAvailable?: boolean;
   date?: string;
 }
+
+export type MedicalFollowUpDay = 'Journée complète' | 'Matin' | 'Après-Midi';
+export type MedicalFollowUpWeather = 'Pluie' | 'Soleil' | 'Couvert' | 'Neige';
+export type MedicalFollowUpHydration = '0 l' | '0,5 l' | '1 l' | '1,5 l' | '2 l' | '2,5 l';
+export type MedicalFollowUpLocation =
+  | 'MLB TdL / FO'
+  | 'MLB TdL'
+  | 'MLB FO'
+  | 'MLB MaF'
+  | 'Friche batimentaire'
+  | 'Autre :';
+export type MedicalFollowUpTraining = 'FI' | 'FAE' | 'FMPA GPT/CIS' | 'Feux réels' | 'FMPA Formateurs' | 'Autre :';
+export type MedicalFollowUpTrainerRole = TrainerLevel;
+export type MedicalFollowUpBurningType =
+  | 'Observation/attaque de l’extérieur'
+  | 'Observation de l’intérieur'
+  | 'Tableau de bord'
+  | 'MEA'
+  | 'Progression / Attaque'
+  | 'Feux réels';
+export type MedicalFollowUpAirDuration = '30' | '60' | '90';
+export type MedicalFollowUpYesNo = 'OUI' | 'NON';
+export type MedicalFollowUpShower = 'Oui' | 'Non';
+export type MedicalFollowUpEmailStatus = 'pending' | 'sent' | 'failed';
+
+export interface MedicalFollowUpFormData {
+  trainerLevel: TrainerLevel;
+  nomFormateur: string;
+  prenomFormateur: string;
+  emailFormateur: string;
+  dateFormation: string;
+  journee: MedicalFollowUpDay | '';
+  conditionsMeteo: MedicalFollowUpWeather | '';
+  temperature: string;
+  hydratationAvantBrulage: MedicalFollowUpHydration | '';
+  hydratationApresBrulage: MedicalFollowUpHydration | '';
+  lieuFormation: MedicalFollowUpLocation | '';
+  lieuFormationAutre: string;
+  formation: MedicalFollowUpTraining | '';
+  formationAutre: string;
+  roleFormateur: MedicalFollowUpTrainerRole | '';
+  roleFormateurAutre: string;
+  typeBrulage: MedicalFollowUpBurningType | '';
+  typeBrulageAutre: string;
+  tempsAri: MedicalFollowUpAirDuration | '';
+  decontaminationPostBrulage: MedicalFollowUpYesNo | '';
+  doucheDansHeure: MedicalFollowUpShower | '';
+  observationsPostBrulage: string[];
+  observationsPostBrulageAutre: string;
+  observations: string;
+}
+
+export interface MedicalFollowUpRecord extends MedicalFollowUpFormData {
+  id: string;
+  userId: string;
+  createdAt: Date;
+  emailStatus: MedicalFollowUpEmailStatus;
+  emailSentAt?: Date | null;
+  emailProviderId?: string | null;
+  emailError?: string | null;
+  updatedAt: Date;
+}
