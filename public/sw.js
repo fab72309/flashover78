@@ -1,4 +1,4 @@
-const CACHE_NAME = 'flashover78-v2';
+const CACHE_NAME = 'flashover78-v3';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -33,6 +33,13 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // PDF/DOCX templates must always reflect the deployed version. A previous
+  // SPA fallback response must never be allowed to masquerade as a template.
+  if (url.pathname.startsWith('/templates/')) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
   event.respondWith(
     caches.match(request).then(cachedResponse => {
       if (cachedResponse) {
@@ -41,6 +48,12 @@ self.addEventListener('fetch', event => {
 
       return fetch(request).then(response => {
         if (!response || response.status !== 200 || response.type !== 'basic') {
+          return response;
+        }
+
+        // Do not cache HTML returned for a missing asset. This avoids serving
+        // the app shell when a later release adds that asset.
+        if ((response.headers.get('content-type') || '').includes('text/html')) {
           return response;
         }
 
