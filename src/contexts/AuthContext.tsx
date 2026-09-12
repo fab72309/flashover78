@@ -114,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             ...devUser,
             email: email || devUser.email,
             displayName: `${firstName} ${lastName}`.trim() || devUser.displayName,
+            role: devUser.role,
             isAdmin: devUser.isAdmin,
             firstName: firstName || devUser.firstName,
             lastName: lastName || devUser.lastName,

@@ -4,17 +4,18 @@ import DocumentUploadPanel from '../components/DocumentUploadPanel';
 import PageIntro from '../components/PageIntro';
 import { useAuth } from '../contexts/AuthContext';
 import { APP_ROUTES } from '../utils/constants';
+import { canContribute } from '../utils/permissions';
 
 export default function AddResource() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  if (!user?.isAdmin) {
+  if (!canContribute(user)) {
     return (
       <section className="surface-card p-5" role="alert">
         <h1 className="text-headline-md text-on-surface">Accès restreint</h1>
         <p className="mt-2 text-body-md text-on-surface-variant">
-          Seuls les administrateurs peuvent ajouter des documents.
+          Cette action est réservée aux contributeurs et administrateurs.
         </p>
       </section>
     );

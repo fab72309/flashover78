@@ -8,6 +8,7 @@ import {
   Download,
   Mail,
   MapPin,
+  Pencil,
   Phone,
   RefreshCw,
   UserCheck,
@@ -18,6 +19,8 @@ import {
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import ConfirmationDialog from '../components/ConfirmationDialog';
+import AddEventForm from '../components/AddEventForm';
+import FormateurAssignments from '../components/FormateurAssignments';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -38,6 +41,7 @@ import type {
 } from '../types';
 import { APP_ROUTES } from '../utils/constants';
 import { createCsv } from '../utils/csv';
+import { canContribute } from '../utils/permissions';
 
 const attendanceOptions: Array<{
   value: TrainingAttendanceStatus;
@@ -63,6 +67,7 @@ export default function TrainingSessionDetail() {
   const [actionBusy, setActionBusy] = useState(false);
   const [attendanceBusy, setAttendanceBusy] = useState<string | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(false);
   const [openedAt] = useState(() => Date.now());
 
   const loadSession = useCallback(async () => {
@@ -336,7 +341,12 @@ export default function TrainingSessionDetail() {
                   : ''
               }`}
             />
-            {event.formateurs?.length ? (
+            {event.formateurAssignments?.length ? (
+              <div className="flex items-start gap-3 text-on-surface-variant">
+                <UserCheck size={19} className="mt-0.5 shrink-0" />
+                <FormateurAssignments assignments={event.formateurAssignments} />
+              </div>
+            ) : event.formateurs?.length ? (
               <InfoRow
                 icon={<UserCheck size={19} />}
                 label={event.formateurs.join(', ')}
@@ -353,12 +363,20 @@ export default function TrainingSessionDetail() {
           </div>
 
           <div className="rounded-lg bg-surface-container p-4">
-            <h2 className="text-headline-md text-on-surface">Mon inscription</h2>
-            <p className="mt-2 text-body-md text-on-surface-variant">
-              {getRegistrationMessage(summary, registrationClosed)}
-            </p>
+            <h2 className="text-headline-md text-on-surface">
+              {user?.isAdmin ? 'Mon inscription' : 'Consultation'}
+            </h2>
+            {!user?.isAdmin ? (
+              <p className="mt-2 text-body-md text-on-surface-variant">
+                Votre niveau d’accès permet de consulter les informations de cette session.
+              </p>
+            ) : (
+              <p className="mt-2 text-body-md text-on-surface-variant">
+                {getRegistrationMessage(summary, registrationClosed)}
+              </p>
+            )}
 
-            {hasActiveRegistration && !registrationClosed ? (
+            {user?.isAdmin && hasActiveRegistration && !registrationClosed ? (
               <button
                 type="button"
                 onClick={() => setCancelDialogOpen(true)}
@@ -367,11 +385,11 @@ export default function TrainingSessionDetail() {
               >
                 Annuler mon inscription
               </button>
-            ) : hasActiveRegistration ? (
+            ) : user?.isAdmin && hasActiveRegistration ? (
               <p className="mt-5 rounded-lg bg-surface-container-high p-3 text-body-md text-on-surface-variant">
                 La session a commencé : l’inscription est désormais archivée.
               </p>
-            ) : (
+            ) : user?.isAdmin ? (
               <button
                 type="button"
                 onClick={handleRegistration}
@@ -384,10 +402,38 @@ export default function TrainingSessionDetail() {
                     ? 'S’inscrire'
                     : 'Rejoindre la liste d’attente'}
               </button>
-            )}
+            ) : null}
           </div>
         </div>
       </section>
+
+      {canContribute(user) ? (
+        <section className="space-y-4 border-t border-outline-variant pt-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-label-sm uppercase text-primary">Planning</p>
+              <h2 className="mt-1 text-headline-lg text-on-surface">Modifier la session</h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditingEvent((current) => !current)}
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-surface-container px-4 font-semibold text-on-surface"
+            >
+              {editingEvent ? <X size={18} /> : <Pencil size={18} />}
+              {editingEvent ? 'Fermer' : 'Modifier'}
+            </button>
+          </div>
+          {editingEvent ? (
+            <AddEventForm
+              event={event}
+              onSuccess={async () => {
+                setEditingEvent(false);
+                await loadSession();
+              }}
+            />
+          ) : null}
+        </section>
+      ) : null}
 
       {user?.isAdmin ? (
         <section className="space-y-4 border-t border-outline-variant pt-6">

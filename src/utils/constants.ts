@@ -47,6 +47,23 @@ export const RESOURCE_CATEGORY_LABELS: Record<string, string> = {
 export const CARPOOL_TRIP_STATUSES = ['open', 'full', 'cancelled', 'completed'] as const;
 export const CARPOOL_REQUEST_STATUSES = ['pending', 'accepted', 'rejected', 'cancelled'] as const;
 
+export const TRAINER_LEVELS = ['RSFR', 'FOR INC', 'FOR BAT'] as const;
+export const TRAINER_LEVEL_LABELS: Record<(typeof TRAINER_LEVELS)[number], string> = {
+  RSFR: 'RSFR',
+  'FOR INC': 'FOR INC',
+  'FOR BAT': 'FOR BAT',
+};
+export const TRAINER_LEVEL_DESCRIPTIONS: Record<(typeof TRAINER_LEVELS)[number], string> = {
+  RSFR: 'Responsable de la formation',
+  'FOR INC': 'Formateur incendie',
+  'FOR BAT': 'Formateur bâtimentaire',
+};
+export const TRAINER_SLOT_LIMITS: Record<(typeof TRAINER_LEVELS)[number], number> = {
+  RSFR: 2,
+  'FOR INC': 2,
+  'FOR BAT': 4,
+};
+
 export const DEFAULT_FORMATEUR_OPTIONS = [
   'Formateur A',
   'Formateur B',

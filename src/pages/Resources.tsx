@@ -38,6 +38,7 @@ import {
   getDocumentExpirationState,
   getResourceCategoryLabel,
 } from '../utils/documents';
+import { canContribute } from '../utils/permissions';
 
 const categoryOptions = Object.entries(RESOURCE_CATEGORY_LABELS) as Array<
   [ResourceCategory, string]
@@ -339,7 +340,7 @@ export default function Resources() {
         </section>
       )}
 
-      {user?.isAdmin ? (
+      {canContribute(user) ? (
         <div className="flex justify-end">
           <button
             type="button"

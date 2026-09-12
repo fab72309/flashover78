@@ -12,6 +12,8 @@ import {
 } from '../utils/constants';
 import type {
   AppUser,
+  AppRole,
+  CalendarFormateurAssignment,
   CalendarEvent,
   CarpoolMyRequest,
   CarpoolRequest,
@@ -30,10 +32,12 @@ import type {
   TrainingRegistrationStatus,
   TrainingSessionSummary,
   ManagedUser,
+  TrainerLevel,
 } from '../types';
 import { devUser, isDevAuthBypassEnabled } from '../utils/devAuth';
 import { getDocumentExpirationState } from '../utils/documents';
 import { getPasswordRecoveryRedirectUrl } from '../utils/authRecovery';
+import { normalizeTrainerLevels } from '../utils/trainerLevels';
 
 type EventRow = {
   id: string;
@@ -42,6 +46,8 @@ type EventRow = {
   observations: string | null;
   location: string | null;
   formateurs: string[] | null;
+  formateur_ids: string[] | null;
+  formateur_levels: TrainerLevel[] | null;
   date: string;
   capacity: number;
   registration_closes_at: string | null;
@@ -117,6 +123,8 @@ type ProfileRow = {
   email: string;
   display_name: string;
   is_admin: boolean | null;
+  role: AppRole | null;
+  trainer_levels: TrainerLevel[] | null;
   first_name: string | null;
   last_name: string | null;
   phone: string | null;
@@ -128,6 +136,7 @@ type ProfileDirectoryRow = {
   display_name: string;
   first_name: string | null;
   last_name: string | null;
+  trainer_levels: TrainerLevel[] | null;
   updated_at: string;
 };
 
@@ -167,6 +176,11 @@ let mockEvents: CalendarEvent[] = [
     description: 'Mise en situation et débriefing opérationnel',
     location: 'Plateau technique Caissons',
     formateurs: ['Fabien Dev'],
+    formateurAssignments: [{
+      userId: devUser.id,
+      displayName: 'Fabien Dev',
+      level: devUser.trainerLevels[0],
+    }],
     date: mockEventDate,
     capacity: 12,
     registrationClosesAt: null,
@@ -301,6 +315,22 @@ let mockTrainingRegistrations: TrainingRegistration[] = [
   },
 ];
 
+let mockManagedUsers: ManagedUser[] = [
+  {
+    id: devUser.id,
+    email: devUser.email,
+    displayName: devUser.displayName,
+    firstName: devUser.firstName,
+    lastName: devUser.lastName,
+    role: devUser.role,
+    trainerLevels: devUser.trainerLevels,
+    isAdmin: devUser.role === 'admin',
+    createdAt: mockNow,
+    lastSignInAt: mockNow,
+    emailConfirmedAt: mockNow,
+  },
+];
+
 function createPreviewId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
@@ -310,6 +340,21 @@ function ensureValidStatus<T extends string>(status: string, allowed: readonly T
 }
 
 function mapEvent(row: EventRow): CalendarEvent {
+  const formateurAssignments = (row.formateur_ids ?? [])
+    .map<CalendarFormateurAssignment | null>((userId, index) => {
+      const level = row.formateur_levels?.[index];
+      if (!level) {
+        return null;
+      }
+
+      return {
+        userId,
+        displayName: row.formateurs?.[index] ?? 'Formateur',
+        level,
+      };
+    })
+    .filter((assignment): assignment is CalendarFormateurAssignment => assignment !== null);
+
   return {
     id: row.id,
     title: row.title,
@@ -317,6 +362,7 @@ function mapEvent(row: EventRow): CalendarEvent {
     observations: row.observations,
     location: row.location,
     formateurs: row.formateurs ?? [],
+    formateurAssignments: formateurAssignments.length > 0 ? formateurAssignments : undefined,
     date: new Date(row.date),
     capacity: row.capacity,
     registrationClosesAt: row.registration_closes_at
@@ -339,11 +385,14 @@ function mapTrainingRegistration(row: TrainingRegistrationRow): TrainingRegistra
 }
 
 function mapProfile(row: ProfileRow): Profile {
+  const role = row.role ?? (row.is_admin ? 'admin' : 'member');
   return {
     id: row.id,
     email: row.email,
     displayName: row.display_name,
-    isAdmin: Boolean(row.is_admin),
+    role,
+    trainerLevels: normalizeTrainerLevels(row.trainer_levels),
+    isAdmin: role === 'admin',
     firstName: row.first_name,
     lastName: row.last_name,
     phone: row.phone,
@@ -356,6 +405,8 @@ function mapDirectoryProfile(row: ProfileDirectoryRow): Profile {
     id: row.id,
     email: '',
     displayName: row.display_name,
+    role: 'member',
+    trainerLevels: normalizeTrainerLevels(row.trainer_levels),
     isAdmin: false,
     firstName: row.first_name,
     lastName: row.last_name,
@@ -415,7 +466,9 @@ function deriveAppUser(user: SupabaseUser, profile?: Profile | null): AppUser {
       [metadata.first_name, metadata.last_name].filter(Boolean).join(' ').trim() ||
       user.email?.split('@')[0] ||
       'Utilisateur',
-    isAdmin: profile?.isAdmin ?? false,
+    role: profile?.role ?? 'member',
+    trainerLevels: profile?.trainerLevels ?? ['RSFR'],
+    isAdmin: profile?.role === 'admin',
     firstName: profile?.firstName ?? metadata.first_name,
     lastName: profile?.lastName ?? metadata.last_name,
     phone: profile?.phone ?? metadata.phone ?? null,
@@ -443,9 +496,24 @@ async function uploadPrivateFile(bucket: string, path: string, file: File) {
   return path;
 }
 
+async function ensureCurrentUserCanContribute() {
+  if (isDevAuthBypassEnabled) {
+    if (devUser.role === 'member') {
+      throw new Error('Action réservée aux contributeurs.');
+    }
+    return;
+  }
+
+  const user = await getCurrentUser();
+  const profile = user ? await getProfile(user.id) : null;
+  if (!profile || profile.role === 'member') {
+    throw new Error('Action réservée aux contributeurs.');
+  }
+}
+
 async function ensureCurrentUserIsAdmin() {
   if (isDevAuthBypassEnabled) {
-    if (!devUser.isAdmin) {
+    if (devUser.role !== 'admin') {
       throw new Error('Action réservée aux administrateurs.');
     }
     return;
@@ -453,7 +521,7 @@ async function ensureCurrentUserIsAdmin() {
 
   const user = await getCurrentUser();
   const profile = user ? await getProfile(user.id) : null;
-  if (!profile?.isAdmin) {
+  if (profile?.role !== 'admin') {
     throw new Error('Action réservée aux administrateurs.');
   }
 }
@@ -637,17 +705,22 @@ function mapManagedUser(row: {
   first_name?: string | null;
   last_name?: string | null;
   is_admin?: boolean | null;
+  role?: AppRole | null;
+  trainer_levels?: TrainerLevel[] | null;
   created_at?: string | null;
   last_sign_in_at?: string | null;
   email_confirmed_at?: string | null;
 }): ManagedUser {
+  const role = row.role ?? (row.is_admin ? 'admin' : 'member');
   return {
     id: row.id,
     email: row.email,
     displayName: row.display_name,
     firstName: row.first_name ?? null,
     lastName: row.last_name ?? null,
-    isAdmin: Boolean(row.is_admin),
+    role,
+    trainerLevels: normalizeTrainerLevels(row.trainer_levels),
+    isAdmin: role === 'admin',
     createdAt: row.created_at ? new Date(row.created_at) : null,
     lastSignInAt: row.last_sign_in_at ? new Date(row.last_sign_in_at) : null,
     emailConfirmedAt: row.email_confirmed_at ? new Date(row.email_confirmed_at) : null,
@@ -655,6 +728,10 @@ function mapManagedUser(row: {
 }
 
 export async function listManagedUsers() {
+  if (isDevAuthBypassEnabled) {
+    return [...mockManagedUsers];
+  }
+
   assertSupabaseConfigured();
 
   const { data, error } = await supabase.functions.invoke('admin-users', {
@@ -676,8 +753,30 @@ export async function inviteManagedUser(input: {
   email: string;
   firstName: string;
   lastName: string;
-  isAdmin: boolean;
+  role: AppRole;
+  trainerLevels: TrainerLevel[];
 }) {
+  if (isDevAuthBypassEnabled) {
+    const now = new Date();
+    mockManagedUsers = [
+      ...mockManagedUsers,
+      {
+        id: createPreviewId('preview-user'),
+        email: input.email,
+        displayName: `${input.firstName} ${input.lastName}`.trim(),
+        firstName: input.firstName,
+        lastName: input.lastName,
+        role: input.role,
+        trainerLevels: normalizeTrainerLevels(input.trainerLevels),
+        isAdmin: input.role === 'admin',
+        createdAt: now,
+        lastSignInAt: null,
+        emailConfirmedAt: null,
+      },
+    ];
+    return;
+  }
+
   assertSupabaseConfigured();
 
   const { error } = await supabase.functions.invoke('admin-users', {
@@ -699,14 +798,91 @@ export async function createManagedUser(input: {
   password: string;
   firstName: string;
   lastName: string;
-  isAdmin: boolean;
+  role: AppRole;
+  trainerLevels: TrainerLevel[];
 }) {
+  if (isDevAuthBypassEnabled) {
+    const now = new Date();
+    mockManagedUsers = [
+      ...mockManagedUsers,
+      {
+        id: createPreviewId('preview-user'),
+        email: input.email,
+        displayName: `${input.firstName} ${input.lastName}`.trim(),
+        firstName: input.firstName,
+        lastName: input.lastName,
+        role: input.role,
+        trainerLevels: normalizeTrainerLevels(input.trainerLevels),
+        isAdmin: input.role === 'admin',
+        createdAt: now,
+        lastSignInAt: null,
+        emailConfirmedAt: now,
+      },
+    ];
+    return;
+  }
+
   assertSupabaseConfigured();
 
   const { error } = await supabase.functions.invoke('admin-users', {
     body: {
       action: 'create',
       ...input,
+    },
+  });
+
+  if (error) {
+    throw normalizeAdminUsersError(error.message);
+  }
+}
+
+export async function updateManagedUserRole(userId: string, role: AppRole) {
+  if (isDevAuthBypassEnabled) {
+    mockManagedUsers = mockManagedUsers.map((candidate) => (
+      candidate.id === userId
+        ? { ...candidate, role, isAdmin: role === 'admin' }
+        : candidate
+    ));
+    return;
+  }
+
+  assertSupabaseConfigured();
+
+  const { error } = await supabase.functions.invoke('admin-users', {
+    body: {
+      action: 'update_role',
+      userId,
+      role,
+    },
+  });
+
+  if (error) {
+    throw normalizeAdminUsersError(error.message);
+  }
+}
+
+export async function updateManagedUserTrainerLevels(
+  userId: string,
+  trainerLevels: TrainerLevel[]
+) {
+  const normalizedTrainerLevels = normalizeTrainerLevels(trainerLevels);
+
+  if (isDevAuthBypassEnabled) {
+    mockManagedUsers = mockManagedUsers.map((candidate) => (
+      candidate.id === userId
+        ? { ...candidate, trainerLevels: normalizedTrainerLevels }
+        : candidate
+    ));
+    return;
+  }
+
+  assertSupabaseConfigured();
+
+  const { error } = await supabase.functions.invoke('admin-users', {
+    body: {
+      action: 'update_trainer_levels',
+      userId,
+      trainerLevels: normalizedTrainerLevels,
     },
   });
 
@@ -736,6 +912,25 @@ export async function updateUserPassword(password: string) {
 }
 
 export async function listProfiles(ids?: string[]) {
+  if (isDevAuthBypassEnabled) {
+    const managedUsers = ids?.length
+      ? mockManagedUsers.filter((profile) => ids.includes(profile.id))
+      : mockManagedUsers;
+
+    return managedUsers.map<Profile>((profile) => ({
+      id: profile.id,
+      email: profile.email,
+      displayName: profile.displayName,
+      role: profile.role,
+      trainerLevels: profile.trainerLevels,
+      isAdmin: profile.isAdmin,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      phone: null,
+      createdAt: profile.createdAt ?? new Date(),
+    }));
+  }
+
   assertSupabaseConfigured();
   let query = supabase.from(TABLES.PROFILE_DIRECTORY).select('*').order('display_name');
 
@@ -797,6 +992,18 @@ export async function getEventById(id: string) {
   return data ? mapEvent(data) : null;
 }
 
+function getEventFormateurPayload(event: Omit<CalendarEvent, 'id' | 'createdAt'>) {
+  const assignments = event.formateurAssignments ?? [];
+
+  return {
+    formateurs: assignments.length > 0
+      ? assignments.map((assignment) => assignment.displayName)
+      : event.formateurs ?? [],
+    formateur_ids: assignments.map((assignment) => assignment.userId),
+    formateur_levels: assignments.map((assignment) => assignment.level),
+  };
+}
+
 export async function createEvent(event: Omit<CalendarEvent, 'id' | 'createdAt'>) {
   if (isDevAuthBypassEnabled) {
     const createdEvent = {
@@ -809,7 +1016,8 @@ export async function createEvent(event: Omit<CalendarEvent, 'id' | 'createdAt'>
   }
 
   assertSupabaseConfigured();
-  await ensureCurrentUserIsAdmin();
+  await ensureCurrentUserCanContribute();
+  const formateurPayload = getEventFormateurPayload(event);
   const { data, error } = await supabase
     .from(TABLES.EVENTS)
     .insert({
@@ -817,11 +1025,56 @@ export async function createEvent(event: Omit<CalendarEvent, 'id' | 'createdAt'>
       description: event.description,
       observations: event.observations ?? null,
       location: event.location ?? null,
-      formateurs: event.formateurs ?? [],
+      ...formateurPayload,
       date: event.date.toISOString(),
       capacity: event.capacity,
       registration_closes_at: event.registrationClosesAt?.toISOString() ?? null,
     })
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return mapEvent(data);
+}
+
+export async function updateEvent(
+  eventId: string,
+  event: Omit<CalendarEvent, 'id' | 'createdAt'>
+) {
+  if (isDevAuthBypassEnabled) {
+    let updatedEvent: CalendarEvent | null = null;
+    mockEvents = mockEvents.map((candidate) => {
+      if (candidate.id !== eventId) {
+        return candidate;
+      }
+      updatedEvent = { ...candidate, ...event };
+      return updatedEvent;
+    });
+    if (!updatedEvent) {
+      throw new Error('Événement introuvable.');
+    }
+    return updatedEvent;
+  }
+
+  assertSupabaseConfigured();
+  await ensureCurrentUserCanContribute();
+  const formateurPayload = getEventFormateurPayload(event);
+  const { data, error } = await supabase
+    .from(TABLES.EVENTS)
+    .update({
+      title: event.title,
+      description: event.description,
+      observations: event.observations ?? null,
+      location: event.location ?? null,
+      ...formateurPayload,
+      date: event.date.toISOString(),
+      capacity: event.capacity,
+      registration_closes_at: event.registrationClosesAt?.toISOString() ?? null,
+    })
+    .eq('id', eventId)
     .select()
     .single();
 
@@ -1365,7 +1618,7 @@ export async function createCatalogDocument(input: {
   file: File;
   metadata: DocumentMetadataInput;
 }) {
-  await ensureCurrentUserIsAdmin();
+  await ensureCurrentUserCanContribute();
   const bucket = RESOURCE_CATEGORY_BUCKET[input.metadata.category];
   const path = buildDocumentStoragePath(input.metadata.category, input.file);
   await uploadPrivateFile(bucket, path, input.file);
@@ -1448,7 +1701,7 @@ export async function replaceDocumentVersion(input: {
   effectiveAt?: Date | null;
   expiresAt?: Date | null;
 }) {
-  await ensureCurrentUserIsAdmin();
+  await ensureCurrentUserCanContribute();
   const path = buildDocumentStoragePath(
     input.resource.category,
     input.file,
@@ -1524,7 +1777,7 @@ export async function updateDocumentMetadata(
   resourceId: string,
   metadata: Omit<DocumentMetadataInput, 'versionLabel'>
 ) {
-  await ensureCurrentUserIsAdmin();
+  await ensureCurrentUserCanContribute();
 
   if (isDevAuthBypassEnabled) {
     mockResources = mockResources.map((resource) =>

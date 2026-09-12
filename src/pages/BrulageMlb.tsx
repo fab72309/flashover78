@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { searchDocuments } from '../services/supabaseService';
 import { APP_ROUTES } from '../utils/constants';
 import type { Resource } from '../types';
+import { canContribute } from '../utils/permissions';
 
 export default function BrulageMlb() {
   const navigate = useNavigate();
@@ -80,7 +81,7 @@ export default function BrulageMlb() {
         </div>
       )}
 
-      {user?.isAdmin && (
+      {canContribute(user) && (
         <DocumentUploadPanel
           label="un document TDL / FO"
           defaultCategory="BRULAGE_TDL_FO"
