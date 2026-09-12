@@ -32,6 +32,9 @@ import type {
   TrainingRegistrationStatus,
   TrainingSessionSummary,
   ManagedUser,
+  MedicalFollowUpEmailStatus,
+  MedicalFollowUpFormData,
+  MedicalFollowUpRecord,
   TrainerLevel,
 } from '../types';
 import { devUser, isDevAuthBypassEnabled } from '../utils/devAuth';
@@ -144,6 +147,41 @@ type CarpoolContactRow = {
   user_id: string;
   email: string;
   phone: string | null;
+};
+
+type MedicalFollowUpRow = {
+  id: string;
+  user_id: string;
+  trainer_level: TrainerLevel;
+  nom_formateur: string;
+  prenom_formateur: string;
+  email_formateur: string;
+  date_formation: string;
+  journee: MedicalFollowUpFormData['journee'] | null;
+  conditions_meteo: MedicalFollowUpFormData['conditionsMeteo'];
+  temperature: string | null;
+  hydratation_avant_bruleage: MedicalFollowUpFormData['hydratationAvantBrulage'];
+  hydratation_apres_bruleage: MedicalFollowUpFormData['hydratationApresBrulage'];
+  lieu_formation: MedicalFollowUpFormData['lieuFormation'];
+  lieu_formation_autre: string | null;
+  formation: MedicalFollowUpFormData['formation'];
+  formation_autre: string | null;
+  role_formateur: MedicalFollowUpFormData['roleFormateur'];
+  role_formateur_autre: string | null;
+  type_bruleage: MedicalFollowUpFormData['typeBrulage'];
+  type_bruleage_autre: string | null;
+  temps_ari: MedicalFollowUpFormData['tempsAri'];
+  decontamination_post_bruleage: MedicalFollowUpFormData['decontaminationPostBrulage'];
+  douche_dans_heure: MedicalFollowUpFormData['doucheDansHeure'];
+  observations_post_bruleage: string[];
+  observations_post_bruleage_autre: string | null;
+  observations: string | null;
+  email_status: MedicalFollowUpEmailStatus;
+  email_sent_at: string | null;
+  email_provider_id: string | null;
+  email_error: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type CarpoolTripRow = {
@@ -315,6 +353,8 @@ let mockTrainingRegistrations: TrainingRegistration[] = [
   },
 ];
 
+let mockMedicalFollowUps: MedicalFollowUpRecord[] = [];
+
 let mockManagedUsers: ManagedUser[] = [
   {
     id: devUser.id,
@@ -452,6 +492,43 @@ function mapResourceVersion(row: ResourceVersionRow): ResourceVersion {
     effectiveAt: row.effective_at ? new Date(row.effective_at) : null,
     expiresAt: row.expires_at ? new Date(row.expires_at) : null,
     createdAt: new Date(row.created_at),
+  };
+}
+
+function mapMedicalFollowUp(row: MedicalFollowUpRow): MedicalFollowUpRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    trainerLevel: row.trainer_level,
+    nomFormateur: row.nom_formateur,
+    prenomFormateur: row.prenom_formateur,
+    emailFormateur: row.email_formateur,
+    dateFormation: row.date_formation,
+    journee: row.journee ?? '',
+    conditionsMeteo: row.conditions_meteo,
+    temperature: row.temperature ?? '',
+    hydratationAvantBrulage: row.hydratation_avant_bruleage,
+    hydratationApresBrulage: row.hydratation_apres_bruleage,
+    lieuFormation: row.lieu_formation,
+    lieuFormationAutre: row.lieu_formation_autre ?? '',
+    formation: row.formation,
+    formationAutre: row.formation_autre ?? '',
+    roleFormateur: row.role_formateur,
+    roleFormateurAutre: row.role_formateur_autre ?? '',
+    typeBrulage: row.type_bruleage,
+    typeBrulageAutre: row.type_bruleage_autre ?? '',
+    tempsAri: row.temps_ari,
+    decontaminationPostBrulage: row.decontamination_post_bruleage,
+    doucheDansHeure: row.douche_dans_heure,
+    observationsPostBrulage: row.observations_post_bruleage,
+    observationsPostBrulageAutre: row.observations_post_bruleage_autre ?? '',
+    observations: row.observations ?? '',
+    emailStatus: row.email_status,
+    emailSentAt: row.email_sent_at ? new Date(row.email_sent_at) : null,
+    emailProviderId: row.email_provider_id,
+    emailError: row.email_error,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
   };
 }
 
@@ -686,6 +763,275 @@ export async function cancelPasswordRecovery() {
   if (error) {
     throw normalizeAuthError(error.message);
   }
+}
+
+export type MedicalFollowUpDeliveryStatus = MedicalFollowUpEmailStatus | 'not_configured';
+
+export interface MedicalFollowUpSubmissionResult {
+  record: MedicalFollowUpRecord;
+  document: Blob;
+  filename: string;
+  deliveryStatus: MedicalFollowUpDeliveryStatus;
+  deliveryError: string | null;
+}
+
+function encodeBytesToBase64(bytes: Uint8Array) {
+  let binary = '';
+  const chunkSize = 0x8000;
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+
+  return btoa(binary);
+}
+
+async function encodeBlobToBase64(blob: Blob) {
+  return encodeBytesToBase64(new Uint8Array(await blob.arrayBuffer()));
+}
+
+function getMedicalFollowUpDeliveryError() {
+  return 'La fiche est enregistrée, mais son envoi automatique n’a pas pu être confirmé.';
+}
+
+function getMedicalFollowUpPayload(input: MedicalFollowUpFormData, userId: string) {
+  return {
+    user_id: userId,
+    trainer_level: input.trainerLevel,
+    nom_formateur: input.nomFormateur.trim(),
+    prenom_formateur: input.prenomFormateur.trim(),
+    email_formateur: input.emailFormateur.trim().toLowerCase(),
+    date_formation: input.dateFormation,
+    journee: input.journee || null,
+    conditions_meteo: input.conditionsMeteo,
+    temperature: input.temperature.trim() || null,
+    hydratation_avant_bruleage: input.hydratationAvantBrulage,
+    hydratation_apres_bruleage: input.hydratationApresBrulage,
+    lieu_formation: input.lieuFormation,
+    lieu_formation_autre: input.lieuFormationAutre.trim() || null,
+    formation: input.formation,
+    formation_autre: input.formationAutre.trim() || null,
+    role_formateur: input.roleFormateur,
+    role_formateur_autre: input.roleFormateurAutre.trim() || null,
+    type_bruleage: input.typeBrulage,
+    type_bruleage_autre: input.typeBrulageAutre.trim() || null,
+    temps_ari: input.tempsAri,
+    decontamination_post_bruleage: input.decontaminationPostBrulage,
+    douche_dans_heure: input.doucheDansHeure,
+    observations_post_bruleage: input.observationsPostBrulage,
+    observations_post_bruleage_autre: input.observationsPostBrulageAutre.trim() || null,
+    observations: input.observations.trim() || null,
+  };
+}
+
+async function sendMedicalFollowUpEmail(
+  record: MedicalFollowUpRecord,
+  document: Blob,
+  filename: string,
+  isEvolution: boolean,
+) {
+  let deliveryStatus: MedicalFollowUpDeliveryStatus = 'pending';
+  let deliveryError: string | null = null;
+
+  try {
+    const { data: delivery, error: deliveryInvokeError } = await supabase.functions.invoke(
+      'medical-follow-up-email',
+      {
+        body: {
+          submissionId: record.id,
+          documentBase64: await encodeBlobToBase64(document),
+          filename,
+          isEvolution,
+        },
+      },
+    );
+
+    if (deliveryInvokeError || delivery?.status !== 'sent') {
+      console.error('Medical follow-up email delivery failed', deliveryInvokeError ?? delivery);
+      deliveryStatus = 'failed';
+      deliveryError = getMedicalFollowUpDeliveryError();
+    } else {
+      deliveryStatus = 'sent';
+    }
+  } catch (error) {
+    console.error('Medical follow-up email delivery failed', error);
+    deliveryStatus = 'failed';
+    deliveryError = getMedicalFollowUpDeliveryError();
+  }
+
+  return {
+    deliveryStatus,
+    deliveryError,
+  };
+}
+
+export async function createMedicalFollowUp(
+  input: MedicalFollowUpFormData,
+  document: Blob,
+  filename: string,
+): Promise<MedicalFollowUpSubmissionResult> {
+  if (isDevAuthBypassEnabled) {
+    const now = new Date();
+    const record: MedicalFollowUpRecord = {
+      ...input,
+      id: createPreviewId('preview-medical-follow-up'),
+      userId: devUser.id,
+      emailStatus: 'failed',
+      emailSentAt: null,
+      emailProviderId: null,
+      emailError: 'Mode de démonstration : aucun email n’est envoyé.',
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockMedicalFollowUps = [record, ...mockMedicalFollowUps];
+    return {
+      record,
+      document,
+      filename,
+      deliveryStatus: 'not_configured',
+      deliveryError: record.emailError ?? null,
+    };
+  }
+
+  assertSupabaseConfigured();
+  const currentUser = await getCurrentUser();
+  if (!currentUser) {
+    throw new Error('Authentification requise pour enregistrer un suivi médical.');
+  }
+
+  const { data, error } = await supabase
+    .from(TABLES.MEDICAL_FOLLOW_UPS)
+    .insert(getMedicalFollowUpPayload(input, currentUser.id))
+    .select('*')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  const initialRecord = mapMedicalFollowUp(data as MedicalFollowUpRow);
+  const delivery = await sendMedicalFollowUpEmail(initialRecord, document, filename, false);
+  const record = delivery.deliveryStatus === 'failed'
+    ? { ...initialRecord, emailStatus: 'failed' as const, emailError: delivery.deliveryError }
+    : initialRecord;
+
+  return {
+    record,
+    document,
+    filename,
+    deliveryStatus: delivery.deliveryStatus,
+    deliveryError: delivery.deliveryError,
+  };
+}
+
+export async function updateMedicalFollowUp(
+  id: string,
+  input: MedicalFollowUpFormData,
+  document: Blob,
+  filename: string,
+): Promise<MedicalFollowUpSubmissionResult> {
+  if (isDevAuthBypassEnabled) {
+    const existing = mockMedicalFollowUps.find((record) => record.id === id && record.userId === devUser.id);
+    if (!existing) throw new Error('Suivi médical introuvable.');
+    if (Date.now() > existing.createdAt.getTime() + 72 * 60 * 60 * 1000) {
+      throw new Error('La période de modification de 72 heures est dépassée.');
+    }
+
+    const now = new Date();
+    const record: MedicalFollowUpRecord = {
+      ...input,
+      id: existing.id,
+      userId: existing.userId,
+      emailStatus: 'failed',
+      emailSentAt: null,
+      emailProviderId: null,
+      emailError: 'Mode de démonstration : aucun email n’est envoyé.',
+      createdAt: existing.createdAt,
+      updatedAt: now,
+    };
+    mockMedicalFollowUps = mockMedicalFollowUps.map((item) => item.id === id ? record : item);
+    return {
+      record,
+      document,
+      filename,
+      deliveryStatus: 'not_configured',
+      deliveryError: record.emailError ?? null,
+    };
+  }
+
+  assertSupabaseConfigured();
+  const currentUser = await getCurrentUser();
+  if (!currentUser) {
+    throw new Error('Authentification requise pour modifier un suivi médical.');
+  }
+
+  const { data, error } = await supabase
+    .from(TABLES.MEDICAL_FOLLOW_UPS)
+    .update(getMedicalFollowUpPayload(input, currentUser.id))
+    .eq('id', id)
+    .eq('user_id', currentUser.id)
+    .select('*')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  const initialRecord = mapMedicalFollowUp(data as MedicalFollowUpRow);
+  const delivery = await sendMedicalFollowUpEmail(initialRecord, document, filename, true);
+  const record = delivery.deliveryStatus === 'failed'
+    ? { ...initialRecord, emailStatus: 'failed' as const, emailError: delivery.deliveryError }
+    : initialRecord;
+
+  return {
+    record,
+    document,
+    filename,
+    deliveryStatus: delivery.deliveryStatus,
+    deliveryError: delivery.deliveryError,
+  };
+}
+
+export async function listMyMedicalFollowUps(userId: string) {
+  if (isDevAuthBypassEnabled) {
+    return mockMedicalFollowUps
+      .filter((record) => record.userId === userId)
+      .sort((first, second) => second.createdAt.getTime() - first.createdAt.getTime());
+  }
+
+  assertSupabaseConfigured();
+  const { data, error } = await supabase
+    .from(TABLES.MEDICAL_FOLLOW_UPS)
+    .select('*')
+    .eq('user_id', userId)
+    .order('date_formation', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as MedicalFollowUpRow[]).map(mapMedicalFollowUp);
+}
+
+export async function getMyMedicalFollowUp(id: string, userId: string) {
+  if (isDevAuthBypassEnabled) {
+    return mockMedicalFollowUps.find((record) => record.id === id && record.userId === userId) ?? null;
+  }
+
+  assertSupabaseConfigured();
+  const { data, error } = await supabase
+    .from(TABLES.MEDICAL_FOLLOW_UPS)
+    .select('*')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ? mapMedicalFollowUp(data as MedicalFollowUpRow) : null;
 }
 
 function normalizeAdminUsersError(message: string) {
