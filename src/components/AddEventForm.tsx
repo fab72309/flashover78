@@ -8,10 +8,11 @@ import {
   DEFAULT_LOCATION_OPTIONS,
   TRAINER_LEVEL_LABELS,
   TRAINER_LEVELS,
-  TRAINER_SLOT_LIMITS,
+  TRAINER_INITIAL_SLOT_COUNTS,
 } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
 import type { CalendarEvent, CalendarFormateurAssignment, Profile, TrainerLevel } from '../types';
+import SearchableFormateurSelect from './SearchableFormateurSelect';
 
 interface AddEventFormProps {
   onSuccess?: () => void;
@@ -22,9 +23,9 @@ type FormateurSelections = Record<TrainerLevel, string[]>;
 
 function createEmptyFormateurSelections(): FormateurSelections {
   return {
-    RSFR: ['', ''],
-    'FOR INC': ['', ''],
-    'FOR BAT': ['', '', '', ''],
+    RSFR: Array.from({ length: TRAINER_INITIAL_SLOT_COUNTS.RSFR }, () => ''),
+    'FOR INC': Array.from({ length: TRAINER_INITIAL_SLOT_COUNTS['FOR INC'] }, () => ''),
+    'FOR BAT': Array.from({ length: TRAINER_INITIAL_SLOT_COUNTS['FOR BAT'] }, () => ''),
   };
 }
 
@@ -33,10 +34,12 @@ function createInitialFormateurSelections(event?: CalendarEvent): FormateurSelec
 
   for (const assignment of event?.formateurAssignments ?? []) {
     const levelSelections = selections[assignment.level];
-    const emptySlot = levelSelections.indexOf('');
-    if (emptySlot >= 0) {
-      levelSelections[emptySlot] = assignment.userId;
+    let emptySlot = levelSelections.indexOf('');
+    if (emptySlot < 0) {
+      emptySlot = levelSelections.length;
+      levelSelections.push('');
     }
+    levelSelections[emptySlot] = assignment.userId;
   }
 
   return selections;
@@ -121,6 +124,13 @@ export default function AddEventForm({ onSuccess, event }: AddEventFormProps) {
       [level]: current[level].map((candidate, candidateIndex) => (
         candidateIndex === index ? value : candidate
       )),
+    }));
+  };
+
+  const addFormateurSlot = (level: TrainerLevel) => {
+    setFormateurSelections((current) => ({
+      ...current,
+      [level]: [...current[level], ''],
     }));
   };
 
@@ -258,7 +268,7 @@ export default function AddEventForm({ onSuccess, event }: AddEventFormProps) {
       <fieldset className="space-y-4">
         <legend className="block text-label-lg text-on-surface">Formateurs</legend>
         <p className="text-body-sm text-on-surface-variant">
-          Choisissez au maximum 2 RSFR, 2 FOR INC et 4 FOR BAT. Une personne ayant plusieurs fonctions apparaît dans chaque liste correspondante, mais ne peut être affectée qu’une seule fois à la même session.
+          Ajoutez les formateurs par fonction avec « + ». Une personne ayant plusieurs fonctions apparaît dans chaque liste correspondante, mais ne peut être affectée qu’une seule fois à la même session.
         </p>
 
         {profilesLoading ? (
@@ -282,30 +292,26 @@ export default function AddEventForm({ onSuccess, event }: AddEventFormProps) {
                 <h3 className="text-body-lg font-semibold text-on-surface">
                   {TRAINER_LEVEL_LABELS[level]}
                 </h3>
-                <span className="text-label-sm text-on-surface-variant">
-                  {TRAINER_SLOT_LIMITS[level]} place{TRAINER_SLOT_LIMITS[level] > 1 ? 's' : ''}
-                </span>
+                <button
+                  type="button"
+                  onClick={() => addFormateurSlot(level)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-xl font-medium leading-none text-primary transition-colors hover:bg-primary/20 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-2"
+                  aria-label={`Ajouter un formateur ${TRAINER_LEVEL_LABELS[level]}`}
+                  title={`Ajouter un formateur ${TRAINER_LEVEL_LABELS[level]}`}
+                >
+                  +
+                </button>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {Array.from({ length: TRAINER_SLOT_LIMITS[level] }, (_, index) => (
-                  <label key={`${level}-${index}`} className="block">
-                    <span className="mb-1.5 block text-label-sm text-on-surface-variant">
-                      {TRAINER_LEVEL_LABELS[level]} {index + 1}
-                    </span>
-                    <select
-                      value={formateurSelections[level][index]}
-                      onChange={(e) => handleFormateurChange(level, index, e.target.value)}
-                      className={selectClasses}
-                      aria-label={`${TRAINER_LEVEL_LABELS[level]} ${index + 1}`}
-                    >
-                      <option value="">Sélectionner un utilisateur</option>
-                      {getAvailableProfiles(level, index).map((profile) => (
-                        <option key={profile.id} value={profile.id}>
-                          {profile.displayName}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+              <div className="space-y-3">
+                {formateurSelections[level].map((userId, index) => (
+                  <SearchableFormateurSelect
+                    key={`${level}-${index}`}
+                    level={level}
+                    index={index}
+                    value={userId}
+                    profiles={getAvailableProfiles(level, index)}
+                    onChange={(value) => handleFormateurChange(level, index, value)}
+                  />
                 ))}
               </div>
             </div>
