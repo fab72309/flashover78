@@ -6,7 +6,7 @@ L’entrée est conditionnée par la fonction enregistrée dans le profil : un c
 
 L’identité affichée est issue du compte connecté. La migration Supabase rattache chaque enregistrement à `auth.uid()`, vérifie la fonction dans `profiles.trainer_levels` et conserve les réponses dans `public.medical_follow_ups` avec une politique RLS limitée à leur propriétaire. Les lieux proposés sont `MLB TdL / FO`, `MLB TdL`, `MLB FO`, `MLB MaF`, `Friche batimentaire` et `Autre :`; les deux derniers demandent une précision.
 
-Le modèle Word fourni est conservé sans modification dans `public/templates/suivi-medical-formateur.docx`. Une version PDF dérivée est servie dans `public/templates/suivi-medical-formateur.pdf`; la fiche remplie est générée au format `.pdf`, ouverte dans un nouvel onglet et téléchargeable. Une modification dans les 72 heures met à jour la fiche et génère un PDF intitulé `Evolution Suivi médical`.
+Le modèle Word fourni est conservé sans modification dans `public/templates/suivi-medical-formateur.docx`. `public/templates/suivi-medical-formateur.pdf` conserve la version PDF de référence ; `public/templates/suivi-medical-formateur-clean.pdf` est une base de rendu dérivée du même modèle, débarrassée des textes de substitution afin d’éviter les aplats blancs lors du remplissage. La fiche remplie est générée au format `.pdf`, ouverte dans un nouvel onglet et téléchargeable. Une modification dans les 72 heures met à jour la fiche et génère un PDF intitulé `Evolution Suivi médical`.
 
 Le résumé des fiches personnelles est disponible dans `Compte et sécurité`. Il n’affiche que les fiches du compte connecté et désactive la modification après 72 heures.
 
