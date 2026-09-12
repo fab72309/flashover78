@@ -40,6 +40,8 @@ function Header({ onMenuClick }: HeaderProps) {
 
   return (
     <header className={`sticky top-0 z-40 flex items-center justify-between px-4 py-3 transition-all duration-300 sm:px-6 lg:px-8 lg:py-5 ${
+      isHome ? 'lg:hidden' : ''
+    } ${
       isScrolled
         ? 'glass shadow-glass'
         : 'bg-surface lg:bg-transparent'
