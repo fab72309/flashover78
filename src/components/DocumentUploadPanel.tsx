@@ -209,7 +209,9 @@ export default function DocumentUploadPanel({
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
-              <span className="block text-label-lg text-on-surface mb-1.5">Date d’effet</span>
+              <span className="block text-label-lg text-on-surface mb-1.5">
+                Date d’effet <span className="text-label-sm text-on-surface-variant">(facultative)</span>
+              </span>
               <input
                 type="date"
                 value={effectiveAt}
@@ -219,7 +221,9 @@ export default function DocumentUploadPanel({
             </label>
 
             <label className="block">
-              <span className="block text-label-lg text-on-surface mb-1.5">Date d’expiration</span>
+              <span className="block text-label-lg text-on-surface mb-1.5">
+                Date d’expiration <span className="text-label-sm text-on-surface-variant">(facultative)</span>
+              </span>
               <input
                 type="date"
                 value={expiresAt}
@@ -229,6 +233,9 @@ export default function DocumentUploadPanel({
               />
             </label>
           </div>
+          <p className="-mt-2 text-label-sm text-on-surface-variant">
+            Laissez ces champs vides si le document n’a pas de date d’effet ou d’échéance.
+          </p>
 
           <button
             type="submit"

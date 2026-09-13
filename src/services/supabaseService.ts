@@ -2462,6 +2462,52 @@ async function removeUploadedFile(bucket: string, path: string) {
   await supabase.storage.from(bucket).remove([path]);
 }
 
+function collectDocumentStorageFiles(
+  resource: Resource,
+  versions: ResourceVersion[]
+) {
+  const candidates = [
+    {
+      bucketId: resource.bucketId,
+      storagePath: resource.storagePath,
+    },
+    ...versions.map((version) => ({
+      bucketId: version.bucketId,
+      storagePath: version.storagePath,
+    })),
+  ].filter(
+    (file): file is { bucketId: string; storagePath: string } =>
+      Boolean(file.bucketId && file.storagePath)
+  );
+
+  return Array.from(
+    new Map(
+      candidates.map((file) => [
+        `${file.bucketId}:${file.storagePath}`,
+        file,
+      ])
+    ).values()
+  );
+}
+
+async function removeDocumentStorageFiles(
+  files: Array<{ bucketId: string; storagePath: string }>
+) {
+  const pathsByBucket = new Map<string, string[]>();
+  for (const file of files) {
+    const paths = pathsByBucket.get(file.bucketId) ?? [];
+    paths.push(file.storagePath);
+    pathsByBucket.set(file.bucketId, paths);
+  }
+
+  for (const [bucketId, paths] of pathsByBucket) {
+    const { error } = await supabase.storage.from(bucketId).remove(paths);
+    if (error) {
+      throw error;
+    }
+  }
+}
+
 export async function createCatalogDocument(input: {
   file: File;
   metadata: DocumentMetadataInput;
@@ -2660,6 +2706,29 @@ export async function updateDocumentMetadata(
   return getDocumentById(resourceId);
 }
 
+export async function deleteCatalogDocument(resource: Resource) {
+  await ensureCurrentUserIsAdmin();
+  await clearOfflineDocumentCache(resource);
+
+  if (isDevAuthBypassEnabled) {
+    mockResources = mockResources.filter((candidate) => candidate.id !== resource.id);
+    delete mockResourceVersions[resource.id];
+    return;
+  }
+
+  assertSupabaseConfigured();
+  const versions = await listDocumentVersions(resource.id);
+  await removeDocumentStorageFiles(collectDocumentStorageFiles(resource, versions));
+
+  const { error } = await supabase.rpc('delete_document', {
+    p_resource_id: resource.id,
+  });
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function toggleDocumentFavorite(resourceId: string) {
   if (isDevAuthBypassEnabled) {
     let nextFavorite = false;
@@ -2780,7 +2849,7 @@ export async function cacheDocumentForOffline(resource: Resource) {
   }
 }
 
-export async function removeDocumentFromOffline(resource: Resource) {
+async function clearOfflineDocumentCache(resource: Resource) {
   if (typeof window !== 'undefined' && 'caches' in window) {
     const cache = await window.caches.open(OFFLINE_DOCUMENT_CACHE);
     const keys = await cache.keys();
@@ -2797,6 +2866,10 @@ export async function removeDocumentFromOffline(resource: Resource) {
       )
     );
   }
+}
+
+export async function removeDocumentFromOffline(resource: Resource) {
+  await clearOfflineDocumentCache(resource);
 
   if (isDevAuthBypassEnabled) {
     mockResources = mockResources.map((candidate) =>
