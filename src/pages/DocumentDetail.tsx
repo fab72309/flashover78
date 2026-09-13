@@ -12,16 +12,19 @@ import {
   Pencil,
   RefreshCw,
   Star,
+  Trash2,
   UploadCloud,
   UserRound,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import LoadingSpinner from '../components/LoadingSpinner';
+import ConfirmationDialog from '../components/ConfirmationDialog';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import {
   cacheDocumentForOffline,
+  deleteCatalogDocument,
   getCachedDocumentUrl,
   getDocumentById,
   getDocumentDownloadUrl,
@@ -47,7 +50,7 @@ import {
   getDocumentExpirationState,
   getResourceCategoryLabel,
 } from '../utils/documents';
-import { canContribute } from '../utils/permissions';
+import { canContribute, isAdministrator } from '../utils/permissions';
 
 export default function DocumentDetail() {
   const { id } = useParams();
@@ -61,6 +64,8 @@ export default function DocumentDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [referenceDate] = useState(() => new Date());
 
   const prepareUrls = useCallback(async (resource: Resource) => {
@@ -176,6 +181,29 @@ export default function DocumentDetail() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!document) {
+      return;
+    }
+
+    setDeleteBusy(true);
+    try {
+      await deleteCatalogDocument(document);
+      setDeleteDialogOpen(false);
+      showToast('Document supprimé.', 'success');
+      navigate(APP_ROUTES.RESOURCES);
+    } catch (deleteError) {
+      showToast(
+        deleteError instanceof Error
+          ? deleteError.message
+          : 'Impossible de supprimer ce document.',
+        'error'
+      );
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -245,6 +273,18 @@ export default function DocumentDetail() {
             </div>
 
             <div className="flex flex-wrap gap-2">
+              {isAdministrator(user) ? (
+                <button
+                  type="button"
+                  onClick={() => setDeleteDialogOpen(true)}
+                  disabled={actionBusy || deleteBusy}
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-red-100 text-red-700 disabled:opacity-50"
+                  aria-label="Supprimer le document"
+                  title="Supprimer le document"
+                >
+                  <Trash2 size={19} />
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={handleFavorite}
@@ -429,6 +469,20 @@ export default function DocumentDetail() {
           </div>
         </section>
       ) : null}
+
+      <ConfirmationDialog
+        open={deleteDialogOpen}
+        title="Supprimer ce document ?"
+        description="Le fichier, son historique de versions et ses informations de catalogue seront supprimés définitivement. Cette action ne peut pas être annulée."
+        confirmLabel="Supprimer le document"
+        busy={deleteBusy}
+        onCancel={() => {
+          if (!deleteBusy) {
+            setDeleteDialogOpen(false);
+          }
+        }}
+        onConfirm={() => void handleDelete()}
+      />
     </div>
   );
 }
@@ -530,8 +584,8 @@ function MetadataEditor({
         <FormInput label="Auteur" value={authorName} onChange={setAuthorName} />
         <FormInput label="Tags" value={tags} onChange={setTags} />
         <div className="grid grid-cols-2 gap-3">
-          <FormInput label="Date d’effet" type="date" value={effectiveAt} onChange={setEffectiveAt} />
-          <FormInput label="Expiration" type="date" value={expiresAt} onChange={setExpiresAt} min={effectiveAt} />
+          <FormInput label="Date d’effet (facultative)" type="date" value={effectiveAt} onChange={setEffectiveAt} />
+          <FormInput label="Expiration (facultative)" type="date" value={expiresAt} onChange={setExpiresAt} min={effectiveAt} />
         </div>
       </div>
       <button
@@ -611,8 +665,8 @@ function VersionUploader({
         <FormInput label="Version" value={versionLabel} onChange={setVersionLabel} required />
         <FormInput label="Auteur" value={authorName} onChange={setAuthorName} />
         <div className="grid grid-cols-2 gap-3">
-          <FormInput label="Date d’effet" type="date" value={effectiveAt} onChange={setEffectiveAt} />
-          <FormInput label="Expiration" type="date" value={expiresAt} onChange={setExpiresAt} min={effectiveAt} />
+          <FormInput label="Date d’effet (facultative)" type="date" value={effectiveAt} onChange={setEffectiveAt} />
+          <FormInput label="Expiration (facultative)" type="date" value={expiresAt} onChange={setExpiresAt} min={effectiveAt} />
         </div>
       </div>
       <button
