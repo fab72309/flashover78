@@ -1,16 +1,26 @@
 import { useEffect, useState } from 'react';
-import { ChevronRight, Clock3, Edit3, HeartPulse } from 'lucide-react';
+import { ChevronRight, Clock3, Download, Edit3, FileText, HeartPulse, Mail, Share2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import LoadingSpinner from './LoadingSpinner';
+import { useToast } from '../contexts/ToastContext';
 import {
+  downloadMedicalFollowUp,
+  getMedicalFollowUpFilename,
   getMedicalFollowUpEditRemainingMs,
   getMedicalFollowUpRoute,
   canEditMedicalFollowUp,
+  isMedicalFollowUpEvolution,
+  openMedicalFollowUpPdf,
+  shareMedicalFollowUp,
+  MEDICAL_FOLLOWUP_ADMIN_EMAIL,
 } from '../utils/medicalFollowUp';
 import { listMyMedicalFollowUps } from '../services/supabaseService';
 import type { MedicalFollowUpRecord } from '../types';
+import { renderMedicalFollowUpPdf } from '../utils/medicalFollowUpPdf';
+
+type PdfAction = 'open' | 'download' | 'share';
 
 function getRemainingLabel(record: MedicalFollowUpRecord) {
   const hours = Math.ceil(getMedicalFollowUpEditRemainingMs(record) / (60 * 60 * 1000));
@@ -26,9 +36,11 @@ function getEmailLabel(record: MedicalFollowUpRecord) {
 
 export default function MedicalFollowUpHistoryPanel({ userId }: { userId: string }) {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [items, setItems] = useState<MedicalFollowUpRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [activeAction, setActiveAction] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -51,6 +63,43 @@ export default function MedicalFollowUpHistoryPanel({ userId }: { userId: string
       isMounted = false;
     };
   }, [userId]);
+
+  const handlePdfAction = async (record: MedicalFollowUpRecord, action: PdfAction) => {
+    const actionKey = `${record.id}:${action}`;
+    const previewWindow = action === 'open' && typeof window !== 'undefined'
+      ? window.open('', '_blank')
+      : null;
+    const isEvolution = isMedicalFollowUpEvolution(record);
+    const filename = getMedicalFollowUpFilename(record, isEvolution);
+    setActiveAction(actionKey);
+
+    try {
+      const document = await renderMedicalFollowUpPdf(record, { isEvolution });
+      if (action === 'open') {
+        if (previewWindow && !previewWindow.closed) {
+          openMedicalFollowUpPdf(document, filename, previewWindow);
+        } else {
+          openMedicalFollowUpPdf(document, filename);
+        }
+      } else if (action === 'download') {
+        downloadMedicalFollowUp(document, filename);
+      } else {
+        const outcome = await shareMedicalFollowUp(document, filename, record.emailFormateur);
+        if (outcome === 'downloaded') {
+          showToast(`Le PDF a été téléchargé et un message pour ${record.emailFormateur} et ${MEDICAL_FOLLOWUP_ADMIN_EMAIL} a été préparé.`, 'info');
+        } else {
+          showToast('Le PDF est prêt dans le partage de votre appareil.', 'info');
+        }
+      }
+    } catch (actionError) {
+      if (actionError instanceof DOMException && actionError.name === 'AbortError') return;
+      previewWindow?.close();
+      console.error(actionError);
+      showToast('Impossible d’ouvrir ou de partager le PDF de ce suivi médical.', 'error');
+    } finally {
+      setActiveAction(null);
+    }
+  };
 
   return (
     <section className="mt-7 border-t border-outline-variant pt-6">
@@ -81,11 +130,11 @@ export default function MedicalFollowUpHistoryPanel({ userId }: { userId: string
         <div className="mt-4 space-y-3">
           {items.map((item) => {
             const editable = canEditMedicalFollowUp(item);
-            const wasUpdated = item.updatedAt.getTime() - item.createdAt.getTime() > 1000;
+            const wasUpdated = isMedicalFollowUpEvolution(item);
             return (
               <div
                 key={item.id}
-                className="flex flex-col gap-4 rounded-lg border border-outline-variant bg-surface-container-lowest p-4 sm:flex-row sm:items-center"
+                className="flex flex-col gap-4 rounded-lg border border-outline-variant bg-surface-container-lowest p-4 sm:flex-row sm:items-start"
               >
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <HeartPulse size={20} />
@@ -109,10 +158,42 @@ export default function MedicalFollowUpHistoryPanel({ userId }: { userId: string
                     </span>
                     <span>{getEmailLabel(item)}</span>
                   </span>
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handlePdfAction(item, 'open')}
+                      disabled={activeAction !== null}
+                      className="btn-primary-gradient inline-flex min-h-10 items-center justify-center gap-2 rounded-squircle-sm px-3 py-2 text-label-lg font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label={`Ouvrir le PDF du suivi médical du ${format(parseISO(item.dateFormation), 'd MMMM yyyy', { locale: fr })}`}
+                    >
+                      <FileText size={16} />
+                      {activeAction === `${item.id}:open` ? 'Ouverture...' : 'Ouvrir le PDF'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePdfAction(item, 'download')}
+                      disabled={activeAction !== null}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-squircle-sm bg-surface-container-high px-3 py-2 text-label-lg font-semibold text-on-surface transition hover:bg-surface-container-highest disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label={`Télécharger le PDF du suivi médical du ${format(parseISO(item.dateFormation), 'd MMMM yyyy', { locale: fr })}`}
+                    >
+                      <Download size={16} />
+                      {activeAction === `${item.id}:download` ? 'Téléchargement...' : 'Télécharger'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePdfAction(item, 'share')}
+                      disabled={activeAction !== null}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-squircle-sm border border-primary/30 px-3 py-2 text-label-lg font-semibold text-primary transition hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label={`Envoyer le PDF du suivi médical du ${format(parseISO(item.dateFormation), 'd MMMM yyyy', { locale: fr })}`}
+                    >
+                      {typeof navigator !== 'undefined' && typeof navigator.share === 'function' ? <Share2 size={16} /> : <Mail size={16} />}
+                      {activeAction === `${item.id}:share` ? 'Préparation...' : 'Envoyer par email'}
+                    </button>
+                  </div>
                 </div>
                 <button
                   type="button"
-                  disabled={!editable}
+                  disabled={!editable || activeAction !== null}
                   onClick={() => navigate(`${getMedicalFollowUpRoute(item.trainerLevel)}?edit=${encodeURIComponent(item.id)}`)}
                   className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-squircle-sm border border-primary/30 px-4 py-2.5 text-body-md font-semibold text-primary transition hover:bg-primary/5 disabled:cursor-not-allowed disabled:border-outline-variant disabled:text-on-surface-variant"
                 >
