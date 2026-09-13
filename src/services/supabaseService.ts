@@ -215,9 +215,16 @@ type MainCouranteRow = {
   formateur_3: string | null;
   formateur_4: string | null;
   formateur_5: string | null;
+  formateurs: string[] | null;
+  formateur_roles: string[] | null;
   site_formation: MainCouranteFormData['siteFormation'];
+  lieu_formation: MainCouranteFormData['lieuFormation'];
+  lieu_formation_autre: string | null;
+  type_bruleage: MainCouranteFormData['typeBrulage'];
+  type_bruleage_autre: string | null;
   type_session: MainCouranteFormData['typeSession'];
   formation: MainCouranteFormData['formation'];
+  formation_autre: string | null;
   citerne_gaz: number | null;
   panneaux_bois: number | null;
   palettes: number | null;
@@ -588,6 +595,17 @@ function mapMedicalFollowUp(row: MedicalFollowUpRow): MedicalFollowUpRecord {
 }
 
 function mapMainCourante(row: MainCouranteRow): MainCouranteRecord {
+  const legacyFormateurs = [
+    row.formateur_1 ?? '',
+    row.formateur_2 ?? '',
+    row.formateur_3 ?? '',
+    row.formateur_4 ?? '',
+    row.formateur_5 ?? '',
+  ];
+  const formateurs = row.formateurs && row.formateurs.length > 0
+    ? row.formateurs
+    : legacyFormateurs;
+
   return {
     id: row.id,
     userId: row.user_id,
@@ -599,16 +617,18 @@ function mapMainCourante(row: MainCouranteRow): MainCouranteRecord {
     vent: row.vent ? String(row.vent) as MainCouranteRecord['vent'] : '',
     sensDuVent: row.sens_du_vent ?? '',
     meteo: row.meteo ?? [],
-    formateurs: [
-      row.formateur_1 ?? '',
-      row.formateur_2 ?? '',
-      row.formateur_3 ?? '',
-      row.formateur_4 ?? '',
-      row.formateur_5 ?? '',
-    ],
+    formateurs,
+    formateurRoles: formateurs.map((_, index) => (
+      (row.formateur_roles?.[index] ?? '') as MainCouranteRecord['formateurRoles'][number]
+    )),
     siteFormation: row.site_formation ?? '',
+    lieuFormation: row.lieu_formation ?? '',
+    lieuFormationAutre: row.lieu_formation_autre ?? '',
+    typeBrulage: row.type_bruleage ?? '',
+    typeBrulageAutre: row.type_bruleage_autre ?? '',
     typeSession: row.type_session ?? '',
     formation: row.formation ?? '',
+    formationAutre: row.formation_autre ?? '',
     citerneGaz: row.citerne_gaz ? String(row.citerne_gaz) as MainCouranteRecord['citerneGaz'] : '',
     panneauxBois: row.panneaux_bois ? String(row.panneaux_bois) as MainCouranteRecord['panneauxBois'] : '',
     palettes: row.palettes ? String(row.palettes) as MainCouranteRecord['palettes'] : '',
@@ -1190,9 +1210,18 @@ function getMainCourantePayload(
     formateur_3: input.formateurs[2]?.trim() || null,
     formateur_4: input.formateurs[3]?.trim() || null,
     formateur_5: input.formateurs[4]?.trim() || null,
+    formateurs: input.formateurs.map((value) => value.trim()),
+    formateur_roles: input.formateurRoles.map((value) => value || ''),
     site_formation: input.siteFormation,
+    lieu_formation: input.lieuFormation || null,
+    lieu_formation_autre: input.lieuFormation === 'Friche batimentaire' || input.lieuFormation === 'Autre :'
+      ? input.lieuFormationAutre.trim() || null
+      : null,
+    type_bruleage: input.typeBrulage || null,
+    type_bruleage_autre: input.typeBrulage === 'Feux réels' ? input.typeBrulageAutre.trim() || null : null,
     type_session: input.typeSession || null,
     formation: input.formation || null,
+    formation_autre: input.formation === 'Autre :' ? input.formationAutre.trim() || null : null,
     citerne_gaz: toNullableNumber(input.citerneGaz),
     panneaux_bois: toNullableNumber(input.panneauxBois),
     palettes: toNullableNumber(input.palettes),
@@ -1283,6 +1312,7 @@ export async function createMainCourante(
       ...input,
       meteo: [...input.meteo],
       formateurs: [...input.formateurs],
+      formateurRoles: [...input.formateurRoles],
       chariotFoyerDemarrage: [...input.chariotFoyerDemarrage],
       id,
       userId: devUser.id,

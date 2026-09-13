@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ArrowLeft, CheckCircle2, ClipboardList, Download, FileText, Mail, RotateCcw, Share2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ClipboardList, Download, FileText, Mail, Plus, RotateCcw, Share2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PageIntro from '../components/PageIntro';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,12 +7,15 @@ import { useToast } from '../contexts/ToastContext';
 import {
   createMainCourante,
   getFormEmailDestinations,
+  listProfiles,
   type MainCouranteSubmissionResult,
 } from '../services/supabaseService';
 import type {
   MainCouranteFormData,
   MainCouranteSite,
   MainCouranteTraining,
+  Profile,
+  TrainerLevel,
 } from '../types';
 import {
   createInitialMainCouranteForm,
@@ -23,9 +26,10 @@ import {
   getMainCouranteRoute,
   getMainCouranteTypeSessionOptions,
   MAIN_COURANTE_CART_STATES,
-  MAIN_COURANTE_FORMATEUR_OPTIONS,
+  MAIN_COURANTE_LIEU_FORMATION_OPTIONS,
   MAIN_COURANTE_QUANTITIES,
   MAIN_COURANTE_SITES,
+  MAIN_COURANTE_TYPE_BRULAGE_OPTIONS,
   MAIN_COURANTE_WASTE_LEVELS,
   MAIN_COURANTE_WEATHER,
   MAIN_COURANTE_WIND_DIRECTIONS,
@@ -34,19 +38,24 @@ import {
   shareMainCourantePdf,
   validateMainCouranteForm,
 } from '../utils/mainCourante';
-import { APP_ROUTES } from '../utils/constants';
+import { APP_ROUTES, TRAINER_LEVEL_LABELS, TRAINER_LEVELS } from '../utils/constants';
 import {
   createDefaultFormEmailDestinations,
   formatEmailRecipients,
   mergeEmailRecipients,
 } from '../utils/emailDestinations';
 import { renderMainCourantePdf } from '../utils/mainCourantePdf';
+import SearchableFormateurSelect from '../components/SearchableFormateurSelect';
 
 const inputClasses =
   'w-full rounded-squircle-sm border border-outline-variant/70 bg-surface-container-lowest px-4 py-3 text-body-lg text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20';
 const readOnlyInputClasses =
   'w-full rounded-squircle-sm border border-outline-variant/60 bg-surface-container px-4 py-3 text-body-lg text-on-surface-variant outline-none';
 const sectionClasses = 'surface-card space-y-5 p-5 md:p-6';
+
+function normalizeFormateurName(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
 
 function SectionTitle({ number, title, description }: { number: string; title: string; description?: string }) {
   return (
@@ -211,10 +220,77 @@ function MainCouranteSiteSection({
 }) {
   const sessionOptions = getMainCouranteTypeSessionOptions(site);
   const formationOptions = getMainCouranteFormationOptions(site);
+  const isMontigny = site === 'Montigny le Bretonneux';
   const isFriche = site === 'Feux réels en friche bâtimentaire';
 
   return (
     <>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <FieldLabel>Lieu de formation</FieldLabel>
+          <ChoiceGrid
+            name="lieuFormation"
+            value={form.lieuFormation}
+            options={MAIN_COURANTE_LIEU_FORMATION_OPTIONS}
+            onChange={(value) => {
+              updateField('lieuFormation', value as MainCouranteFormData['lieuFormation']);
+              if (value !== 'Friche batimentaire' && value !== 'Autre :') {
+                updateField('lieuFormationAutre', '');
+              }
+            }}
+            columns="sm:grid-cols-2"
+            required
+          />
+          {form.lieuFormation === 'Friche batimentaire' || form.lieuFormation === 'Autre :' ? (
+            <div className="mt-3">
+              <label htmlFor="lieuFormationAutre">
+                <FieldLabel>Précisez le lieu de formation</FieldLabel>
+                <input
+                  id="lieuFormationAutre"
+                  className={inputClasses}
+                  type="text"
+                  value={form.lieuFormationAutre}
+                  onChange={(event) => updateField('lieuFormationAutre', event.target.value)}
+                  placeholder="Ex. site ou bâtiment concerné"
+                  required
+                />
+              </label>
+            </div>
+          ) : null}
+        </div>
+        <div>
+          <FieldLabel>Type de brûlage</FieldLabel>
+          <select
+            className={inputClasses}
+            value={form.typeBrulage}
+            onChange={(event) => {
+              const value = event.target.value as MainCouranteFormData['typeBrulage'];
+              updateField('typeBrulage', value);
+              if (value !== 'Feux réels') {
+                updateField('typeBrulageAutre', '');
+              }
+            }}
+            required
+          >
+            <option value="">Sélectionner</option>
+            {MAIN_COURANTE_TYPE_BRULAGE_OPTIONS.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+          {form.typeBrulage === 'Feux réels' ? (
+            <input
+              className={`${inputClasses} mt-3`}
+              value={form.typeBrulageAutre}
+              onChange={(event) => updateField('typeBrulageAutre', event.target.value)}
+              inputMode="numeric"
+              placeholder="Nombre de mises à feu"
+              aria-label="Nombre de mises à feu"
+              required
+            />
+          ) : null}
+        </div>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <div>
           <FieldLabel>Type de session</FieldLabel>
@@ -239,15 +315,36 @@ function MainCouranteSiteSection({
               name="formation"
               value={form.formation}
               options={formationOptions}
-              onChange={(value) => updateField('formation', value as MainCouranteTraining)}
+              onChange={(value) => {
+                updateField('formation', value as MainCouranteTraining);
+                if (value !== 'Autre :') {
+                  updateField('formationAutre', '');
+                }
+              }}
               columns="sm:grid-cols-2"
               required
             />
+            {form.formation === 'Autre :' ? (
+              <div className="mt-3">
+                <label htmlFor="formationAutre">
+                  <FieldLabel>Précisez la formation concernée</FieldLabel>
+                  <input
+                    id="formationAutre"
+                    className={inputClasses}
+                    type="text"
+                    value={form.formationAutre}
+                    onChange={(event) => updateField('formationAutre', event.target.value)}
+                    placeholder="Saisissez le type de formation"
+                    required
+                  />
+                </label>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
 
-      {site === 'Montigny le Bretonneux' ? (
+      {isMontigny ? (
         <div className="space-y-4">
           <ScaleField
             name="citerneGaz"
@@ -312,62 +409,6 @@ function MainCouranteSiteSection({
         </div>
       ) : null}
 
-      {site === 'Poissy' ? (
-        <div className="space-y-4">
-          <ScaleField
-            name="masquesFfp3"
-            label="Masques FFP3"
-            value={form.masquesFfp3}
-            options={MAIN_COURANTE_QUANTITIES}
-            onChange={(value) => updateField('masquesFfp3', value as MainCouranteFormData['masquesFfp3'])}
-          />
-          <ScaleField
-            name="gantsNitrile"
-            label="Gants Nitrile"
-            value={form.gantsNitrile}
-            options={MAIN_COURANTE_QUANTITIES}
-            onChange={(value) => updateField('gantsNitrile', value as MainCouranteFormData['gantsNitrile'])}
-          />
-          <ScaleField
-            name="benneDechet"
-            label="Benne à déchet"
-            value={form.benneDechet}
-            options={MAIN_COURANTE_WASTE_LEVELS}
-            onChange={(value) => updateField('benneDechet', value as MainCouranteFormData['benneDechet'])}
-            startLabel="Vide"
-            endLabel="Pleine"
-          />
-          <ScaleField
-            name="panneauxBois"
-            label="Panneaux de bois"
-            value={form.panneauxBois}
-            options={MAIN_COURANTE_QUANTITIES}
-            onChange={(value) => updateField('panneauxBois', value as MainCouranteFormData['panneauxBois'])}
-            startLabel="1 brulage"
-            endLabel="10 brulages"
-          />
-          <ScaleField
-            name="palettes"
-            label="Palettes"
-            value={form.palettes}
-            options={MAIN_COURANTE_QUANTITIES}
-            onChange={(value) => updateField('palettes', value as MainCouranteFormData['palettes'])}
-            startLabel="1 brulage"
-            endLabel="10 brulages"
-          />
-          <div>
-            <FieldLabel optional>Chariot foyer de démarrage</FieldLabel>
-            <CheckboxGrid
-              name="chariotFoyerDemarrage"
-              values={form.chariotFoyerDemarrage}
-              options={MAIN_COURANTE_CART_STATES}
-              onToggle={toggleCartState}
-              columns="sm:grid-cols-2"
-            />
-          </div>
-        </div>
-      ) : null}
-
       {isFriche ? (
         <div className="space-y-4">
           <ScaleField
@@ -394,7 +435,7 @@ function MainCouranteSiteSection({
             endLabel="10 brulages"
           />
           <p className="text-label-sm text-on-surface-variant">
-            Le formulaire d’origine affichait ces éléments désactivés ; ils sont disponibles ici pour permettre de renseigner la main courante.
+            Renseignez uniquement les consommables et matériels concernés par la séance.
           </p>
         </div>
       ) : null}
@@ -410,6 +451,9 @@ export default function MainCourante() {
   const [submitting, setSubmitting] = useState(false);
   const [submission, setSubmission] = useState<MainCouranteSubmissionResult | null>(null);
   const [emailDestinations, setEmailDestinations] = useState(createDefaultFormEmailDestinations);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(true);
+  const [profilesError, setProfilesError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -422,6 +466,40 @@ export default function MainCourante() {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProfiles = async () => {
+      setProfilesLoading(true);
+      setProfilesError(null);
+
+      try {
+        const nextProfiles = await listProfiles();
+        if (isMounted) {
+          setProfiles(nextProfiles);
+        }
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : 'Impossible de charger la liste des utilisateurs enregistrés.';
+        if (isMounted) {
+          setProfilesError(message);
+          showToast(message, 'error');
+        }
+      } finally {
+        if (isMounted) {
+          setProfilesLoading(false);
+        }
+      }
+    };
+
+    void loadProfiles();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [showToast]);
+
   const updateField = <K extends keyof MainCouranteFormData>(
     field: K,
     value: MainCouranteFormData[K],
@@ -433,8 +511,13 @@ export default function MainCourante() {
     setForm((current) => ({
       ...current,
       siteFormation: site,
+      lieuFormation: '',
+      lieuFormationAutre: '',
+      typeBrulage: '',
+      typeBrulageAutre: '',
       typeSession: '',
       formation: '',
+      formationAutre: '',
       citerneGaz: '',
       panneauxBois: '',
       palettes: '',
@@ -470,6 +553,43 @@ export default function MainCourante() {
         candidateIndex === index ? value : candidate
       )),
     }));
+  };
+
+  const updateFormateurRole = (index: number, role: TrainerLevel | '') => {
+    setForm((current) => ({
+      ...current,
+      formateurs: current.formateurs.map((name, candidateIndex) => (
+        candidateIndex === index && current.formateurRoles[index] !== role ? '' : name
+      )),
+      formateurRoles: current.formateurRoles.map((candidate, candidateIndex) => (
+        candidateIndex === index ? role : candidate
+      )),
+    }));
+  };
+
+  const addFormateurSlot = () => {
+    setForm((current) => ({
+      ...current,
+      formateurs: [...current.formateurs, ''],
+      formateurRoles: [...current.formateurRoles, ''],
+    }));
+  };
+
+  const getFormateurProfiles = (index: number) => {
+    const role = form.formateurRoles[index];
+    const currentName = normalizeFormateurName(form.formateurs[index] ?? '');
+    const selectedNames = new Set(
+      form.formateurs
+        .map(normalizeFormateurName)
+        .filter(Boolean),
+    );
+
+    return profiles.filter((profile) => {
+      const matchesRole = !role || profile.trainerLevels.includes(role);
+      const profileName = normalizeFormateurName(profile.displayName);
+      const isCurrentSelection = currentName !== '' && profileName === currentName;
+      return matchesRole && (isCurrentSelection || !selectedNames.has(profileName));
+    });
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -637,24 +757,72 @@ export default function MainCourante() {
         </section>
 
         <section className={sectionClasses}>
-          <SectionTitle number="3" title="Formateurs" description="Les cinq emplacements du Google Form sont conservés ; les sélections restent facultatives." />
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <SectionTitle
+              number="3"
+              title="Formateurs"
+              description="Choisissez une fonction pour filtrer les utilisateurs enregistrés, ou saisissez directement le nom d’un formateur."
+            />
+            <button
+              type="button"
+              onClick={addFormateurSlot}
+              className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-squircle-sm border border-primary/30 px-3 py-2 text-label-lg font-semibold text-primary transition hover:bg-primary/5"
+            >
+              <Plus size={17} aria-hidden="true" />
+              Ajouter un formateur
+            </button>
+          </div>
+          {profilesLoading ? (
+            <p className="rounded-lg bg-surface-container px-4 py-3 text-body-md text-on-surface-variant">
+              Chargement des utilisateurs enregistrés...
+            </p>
+          ) : null}
+          {profilesError ? (
+            <p className="rounded-lg bg-red-50 px-4 py-3 text-body-md text-red-700" role="alert">
+              {profilesError} Vous pouvez toutefois saisir les noms manuellement.
+            </p>
+          ) : null}
+          {!profilesLoading && !profilesError && profiles.length === 0 ? (
+            <p className="rounded-lg bg-surface-container px-4 py-3 text-body-md text-on-surface-variant">
+              Aucun utilisateur enregistré n’est disponible. Saisissez les noms manuellement.
+            </p>
+          ) : null}
+          <div className="space-y-3">
             {form.formateurs.map((value, index) => (
-              <div key={`formateur-${index}`}>
-                <FieldLabel>Formateur N°{index + 1}</FieldLabel>
-                <select
-                  className={inputClasses}
+              <div
+                key={`formateur-${index}`}
+                className="grid gap-3 rounded-squircle-sm border border-outline-variant/50 bg-surface-container-low p-3 md:grid-cols-[12rem_minmax(0,1fr)] md:items-end"
+              >
+                <label className="block">
+                  <FieldLabel>Fonction</FieldLabel>
+                  <select
+                    className={inputClasses}
+                    name={`formateurRole-${index}`}
+                    aria-label={`Fonction du formateur N°${index + 1}`}
+                    value={form.formateurRoles[index] ?? ''}
+                    onChange={(event) => updateFormateurRole(index, event.target.value as TrainerLevel | '')}
+                  >
+                    <option value="">Choisir une fonction</option>
+                    {TRAINER_LEVELS.map((level) => (
+                      <option key={level} value={level}>{TRAINER_LEVEL_LABELS[level]}</option>
+                    ))}
+                  </select>
+                </label>
+                <SearchableFormateurSelect
+                  index={index}
+                  label={`Nom du formateur N°${index + 1}`}
                   value={value}
-                  onChange={(event) => updateFormateur(index, event.target.value)}
-                >
-                  <option value="">Sélectionner</option>
-                  {MAIN_COURANTE_FORMATEUR_OPTIONS.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
+                  profiles={getFormateurProfiles(index)}
+                  allowCustomValue
+                  valueKey="displayName"
+                  onChange={(nextValue) => updateFormateur(index, nextValue)}
+                />
               </div>
             ))}
           </div>
+          <p className="text-label-sm text-on-surface-variant">
+            Huit emplacements sont proposés au départ (2 RSFR, 2 FOR INC et 4 FOR BAT). Utilisez « Ajouter un formateur » si la séance en comporte davantage.
+          </p>
         </section>
 
         <section className={sectionClasses}>
@@ -671,7 +839,7 @@ export default function MainCourante() {
 
         {form.siteFormation ? (
           <section className={sectionClasses}>
-            <SectionTitle number="5" title={form.siteFormation === 'Feux réels en friche bâtimentaire' ? 'Feu réel en friche bâtimentaire' : form.siteFormation} description="Les questions affichées correspondent au site sélectionné dans le formulaire d’origine." />
+            <SectionTitle number="5" title={form.siteFormation === 'Feux réels en friche bâtimentaire' ? 'Feu réel en friche bâtimentaire' : form.siteFormation} description="Décrivez la session et renseignez les éléments matériels du site sélectionné." />
             <MainCouranteSiteSection
               site={form.siteFormation}
               form={form}

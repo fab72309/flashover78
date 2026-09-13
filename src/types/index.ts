@@ -337,32 +337,25 @@ export type MainCouranteEmailStatus = 'pending' | 'sent' | 'failed';
 
 export type MainCouranteSite =
   | 'Montigny le Bretonneux'
-  | 'Poissy'
   | 'Feux réels en friche bâtimentaire';
 export type MainCouranteWindStrength = '1' | '2' | '3' | '4' | '5';
 export type MainCouranteWindDirection = 'Arrière' | 'Avant' | 'Latéral';
 export type MainCouranteWeather = 'Pluie' | 'Soleil' | 'Couvert' | 'Neige';
 export type MainCouranteMontignySession =
-  | '1/2 journée TdL'
-  | '1/2 journée FO'
-  | 'Journée TdL / FO';
-export type MainCourantePoissySession =
-  | '1/2 journée Progression'
-  | 'Journée Progression'
-  | 'Journée MEA';
+  | 'Journée complète'
+  | 'Matin'
+  | 'Après-Midi';
 export type MainCouranteFricheSession = 'FI' | 'FAE' | 'FMA' | 'FMA formateurs';
 export type MainCouranteSession =
   | MainCouranteMontignySession
-  | MainCourantePoissySession
   | MainCouranteFricheSession;
 export type MainCouranteTraining =
-  | 'FI SPV'
-  | 'FI SPP'
-  | 'FAE CE'
-  | 'FMPA'
-  | 'MEA'
-  | 'FMPA Formateur'
-  | 'Formation de formateurs';
+  | 'FI'
+  | 'FAE'
+  | 'FMPA GPT/CIS'
+  | 'Feux réels'
+  | 'FMPA Formateurs'
+  | 'Autre :';
 export type MainCouranteQuantity = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10';
 export type MainCouranteWasteLevel = '1' | '2' | '3' | '4' | '5';
 export type MainCouranteCartState = 'Vide' | 'OK';
@@ -374,9 +367,15 @@ export interface MainCouranteFormData {
   sensDuVent: MainCouranteWindDirection | '';
   meteo: MainCouranteWeather[];
   formateurs: string[];
+  formateurRoles: (TrainerLevel | '')[];
   siteFormation: MainCouranteSite | '';
+  lieuFormation: MedicalFollowUpLocation | '';
+  lieuFormationAutre: string;
+  typeBrulage: MedicalFollowUpBurningType | '';
+  typeBrulageAutre: string;
   typeSession: MainCouranteSession | '';
   formation: MainCouranteTraining | '';
+  formationAutre: string;
   citerneGaz: MainCouranteQuantity | '';
   panneauxBois: MainCouranteQuantity | '';
   palettes: MainCouranteQuantity | '';
