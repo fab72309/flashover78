@@ -4,7 +4,6 @@ import type {
   MainCouranteFormData,
   MainCouranteFricheSession,
   MainCouranteMontignySession,
-  MainCourantePoissySession,
   MainCouranteQuantity,
   MainCouranteSession,
   MainCouranteSite,
@@ -13,19 +12,26 @@ import type {
   MainCouranteWeather,
   MainCouranteWindDirection,
   MainCouranteWindStrength,
+  MedicalFollowUpBurningType,
+  MedicalFollowUpLocation,
+  TrainerLevel,
 } from '../types';
-import { APP_ROUTES } from './constants';
+import {
+  APP_ROUTES,
+  TRAINER_INITIAL_SLOT_COUNTS,
+  TRAINER_LEVELS,
+} from './constants';
 import {
   DEFAULT_FORM_EMAIL_DESTINATIONS,
   mergeEmailRecipients,
 } from './emailDestinations';
+import { MEDICAL_FOLLOWUP_OPTIONS } from './medicalFollowUp';
 
 export const MAIN_COURANTE_ADMIN_EMAIL = DEFAULT_FORM_EMAIL_DESTINATIONS.mainCourante[0];
 export const MAIN_COURANTE_RENDER_TEMPLATE_URL = '/templates/main-courante.pdf';
 
 export const MAIN_COURANTE_SITES = [
   'Montigny le Bretonneux',
-  'Poissy',
   'Feux réels en friche bâtimentaire',
 ] as const satisfies readonly MainCouranteSite[];
 
@@ -35,53 +41,11 @@ export const MAIN_COURANTE_WEATHER = ['Pluie', 'Soleil', 'Couvert', 'Neige'] as 
 export const MAIN_COURANTE_QUANTITIES = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'] as const satisfies readonly MainCouranteQuantity[];
 export const MAIN_COURANTE_WASTE_LEVELS = ['1', '2', '3', '4', '5'] as const satisfies readonly MainCouranteWasteLevel[];
 export const MAIN_COURANTE_CART_STATES = ['Vide', 'OK'] as const satisfies readonly MainCouranteCartState[];
-
-export const MAIN_COURANTE_FORMATEUR_OPTIONS = [
-  'BOUHOUR Sylvie',
-  'BOURJAILLAT Stéphane',
-  'BRETEAU Alexandre',
-  'CATUTEL Flavien',
-  'CHEVAL Camille',
-  'DANIEAU Stephane',
-  'DAVID Benoit',
-  'DE ABREU LOPES Fabien',
-  'DELARUE Alexandre',
-  'DUISIT Mickael',
-  'FRANCOIS Aurélien',
-  'GRIMAUD Alexis',
-  'GUILBERT Thierry',
-  'HALOPE Fabrice',
-  'KHELLAFI Brahim',
-  'LE GUELAFF Marc',
-  'LEROY Xavier',
-  'LOUP Fabien',
-  'LORILLOU Rodolphe',
-  'MOREL Romain',
-  'NOURAEI Chloé',
-  'PAILLOTET Romain',
-  'PAPE David',
-  'PERRAULT Antoine',
-  'RENVOISE Maxime',
-  'RIBEIRO KEVIN',
-  'SAINTILAN Quentin',
-  'SASSIER Nicolas',
-  'SILVA Francisco',
-  'TERARD Fabien',
-  'THEVENOT Nicolas',
-  'VALENTIN Yann',
-] as const;
+export const MAIN_COURANTE_LIEU_FORMATION_OPTIONS = MEDICAL_FOLLOWUP_OPTIONS.lieuFormation satisfies readonly MedicalFollowUpLocation[];
+export const MAIN_COURANTE_TYPE_BRULAGE_OPTIONS = MEDICAL_FOLLOWUP_OPTIONS.typeBrulage satisfies readonly MedicalFollowUpBurningType[];
 
 export const MAIN_COURANTE_SESSIONS = {
-  'Montigny le Bretonneux': [
-    '1/2 journée TdL',
-    '1/2 journée FO',
-    'Journée TdL / FO',
-  ] as const satisfies readonly MainCouranteMontignySession[],
-  Poissy: [
-    '1/2 journée Progression',
-    'Journée Progression',
-    'Journée MEA',
-  ] as const satisfies readonly MainCourantePoissySession[],
+  'Montigny le Bretonneux': MEDICAL_FOLLOWUP_OPTIONS.journee satisfies readonly MainCouranteMontignySession[],
   'Feux réels en friche bâtimentaire': [
     'FI',
     'FAE',
@@ -91,25 +55,15 @@ export const MAIN_COURANTE_SESSIONS = {
 } as const;
 
 export const MAIN_COURANTE_FORMATIONS = {
-  'Montigny le Bretonneux': [
-    'FI SPV',
-    'FI SPP',
-    'FAE CE',
-    'FMPA',
-    'FMPA Formateur',
-    'Formation de formateurs',
-  ] as const,
-  Poissy: [
-    'FI SPV',
-    'FI SPP',
-    'FAE CE',
-    'MEA',
-    'FMPA',
-    'FMPA Formateur',
-    'Formation de formateurs',
-  ] as const,
+  'Montigny le Bretonneux': MEDICAL_FOLLOWUP_OPTIONS.formation,
   'Feux réels en friche bâtimentaire': [] as const,
 } as const satisfies Record<MainCouranteSite, readonly MainCouranteTraining[]>;
+
+export const MAIN_COURANTE_INITIAL_FORMATEUR_ROLES: readonly TrainerLevel[] = [
+  ...Array.from({ length: TRAINER_INITIAL_SLOT_COUNTS.RSFR }, () => 'RSFR' as const),
+  ...Array.from({ length: TRAINER_INITIAL_SLOT_COUNTS['FOR INC'] }, () => 'FOR INC' as const),
+  ...Array.from({ length: TRAINER_INITIAL_SLOT_COUNTS['FOR BAT'] }, () => 'FOR BAT' as const),
+];
 
 export function getMainCouranteRoute() {
   return APP_ROUTES.MAIN_COURANTE;
@@ -147,10 +101,16 @@ export function createInitialMainCouranteForm(user: AppUser | null): MainCourant
     vent: '',
     sensDuVent: '',
     meteo: [],
-    formateurs: ['', '', '', '', ''],
+    formateurs: MAIN_COURANTE_INITIAL_FORMATEUR_ROLES.map(() => ''),
+    formateurRoles: [...MAIN_COURANTE_INITIAL_FORMATEUR_ROLES],
     siteFormation: '',
+    lieuFormation: '',
+    lieuFormationAutre: '',
+    typeBrulage: '',
+    typeBrulageAutre: '',
     typeSession: '',
     formation: '',
+    formationAutre: '',
     citerneGaz: '',
     panneauxBois: '',
     palettes: '',
@@ -181,6 +141,9 @@ export function validateMainCouranteForm(data: MainCouranteFormData): string | n
   if (!data.siteFormation) {
     return 'Sélectionnez le site de formation.';
   }
+  if (!isMainCouranteSite(data.siteFormation)) {
+    return 'Sélectionnez un site de formation valide.';
+  }
   if (data.vent && !MAIN_COURANTE_WIND_STRENGTHS.includes(data.vent)) {
     return 'Sélectionnez une force de vent valide.';
   }
@@ -190,8 +153,27 @@ export function validateMainCouranteForm(data: MainCouranteFormData): string | n
   if (data.meteo.some((weather) => !MAIN_COURANTE_WEATHER.includes(weather))) {
     return 'Sélectionnez une météo valide.';
   }
-  if (data.formateurs.length !== 5) {
-    return 'Les cinq emplacements de formateur doivent être présents.';
+  if (data.formateurs.length < MAIN_COURANTE_INITIAL_FORMATEUR_ROLES.length
+    || data.formateurRoles.length !== data.formateurs.length) {
+    return 'Les huit emplacements initiaux de formateur doivent être présents.';
+  }
+  const normalizedFormateurs = new Set<string>();
+  for (let index = 0; index < data.formateurs.length; index += 1) {
+    const name = data.formateurs[index].trim();
+    const role = data.formateurRoles[index];
+    if (name && !role) {
+      return `Sélectionnez la fonction du formateur N°${index + 1}.`;
+    }
+    if (role && !TRAINER_LEVELS.includes(role)) {
+      return `La fonction du formateur N°${index + 1} est invalide.`;
+    }
+    if (name) {
+      const normalizedName = name.toLocaleLowerCase();
+      if (normalizedFormateurs.has(normalizedName)) {
+        return 'Un même formateur ne peut être renseigné plusieurs fois.';
+      }
+      normalizedFormateurs.add(normalizedName);
+    }
   }
   if (!data.typeSession) {
     return 'Sélectionnez le type de session.';
@@ -206,6 +188,37 @@ export function validateMainCouranteForm(data: MainCouranteFormData): string | n
   }
   if (data.formation && !formationOptions.includes(data.formation)) {
     return 'La formation ne correspond pas au site sélectionné.';
+  }
+  if (data.formation === 'Autre :' && !data.formationAutre.trim()) {
+    return 'Précisez la formation concernée.';
+  }
+  if (data.formation !== 'Autre :' && data.formationAutre.trim()) {
+    return 'La précision de formation ne correspond pas au choix sélectionné.';
+  }
+  if (!data.lieuFormation) {
+    return 'Sélectionnez le lieu de formation.';
+  }
+  if (!MAIN_COURANTE_LIEU_FORMATION_OPTIONS.includes(data.lieuFormation)) {
+    return 'Sélectionnez un lieu de formation valide.';
+  }
+  const locationNeedsDetails = data.lieuFormation === 'Friche batimentaire' || data.lieuFormation === 'Autre :';
+  if (locationNeedsDetails && !data.lieuFormationAutre.trim()) {
+    return 'Précisez le lieu de formation.';
+  }
+  if (!locationNeedsDetails && data.lieuFormationAutre.trim()) {
+    return 'La précision de lieu ne correspond pas au choix sélectionné.';
+  }
+  if (!data.typeBrulage) {
+    return 'Sélectionnez le type de brûlage.';
+  }
+  if (!MAIN_COURANTE_TYPE_BRULAGE_OPTIONS.includes(data.typeBrulage)) {
+    return 'Sélectionnez un type de brûlage valide.';
+  }
+  if (data.typeBrulage === 'Feux réels' && !data.typeBrulageAutre.trim()) {
+    return 'Indiquez le nombre de mises à feu dans le champ prévu.';
+  }
+  if (data.typeBrulage !== 'Feux réels' && data.typeBrulageAutre.trim()) {
+    return 'La précision de brûlage ne correspond pas au choix sélectionné.';
   }
   if (data.citerneGaz && !isQuantity(data.citerneGaz)) {
     return 'La quantité de citerne de gaz est invalide.';

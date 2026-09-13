@@ -29,6 +29,38 @@ function getEmailLabel(record: MainCouranteRecord) {
   return 'Email en attente';
 }
 
+function getLocationLabel(record: MainCouranteRecord) {
+  if (record.lieuFormation === 'Friche batimentaire' || record.lieuFormation === 'Autre :') {
+    return record.lieuFormationAutre.trim()
+      ? `${record.lieuFormation} ${record.lieuFormationAutre.trim()}`
+      : record.lieuFormation;
+  }
+
+  return record.lieuFormation;
+}
+
+function getBurningTypeLabel(record: MainCouranteRecord) {
+  if (record.typeBrulage === 'Feux réels' && record.typeBrulageAutre.trim()) {
+    return `${record.typeBrulage} - ${record.typeBrulageAutre.trim()} mise(s) à feu`;
+  }
+
+  return record.typeBrulage;
+}
+
+function getFormateursLabel(record: MainCouranteRecord) {
+  const formateurs = record.formateurs
+    .map((name, index) => {
+      const trimmedName = name.trim();
+      if (!trimmedName) return '';
+
+      const role = record.formateurRoles[index];
+      return role ? `${role} · ${trimmedName}` : trimmedName;
+    })
+    .filter(Boolean);
+
+  return formateurs.join(', ') || 'Aucun formateur sélectionné';
+}
+
 export default function MainCouranteHistoryPanel({ userId }: { userId: string }) {
   const [items, setItems] = useState<MainCouranteRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -187,8 +219,14 @@ export default function MainCouranteHistoryPanel({ userId }: { userId: string })
                   {item.typeSession ? ` · ${item.typeSession}` : ''}
                   {item.formation ? ` · ${item.formation}` : ''}
                 </p>
+                {item.lieuFormation || item.typeBrulage ? (
+                  <p className="mt-1 text-body-md text-on-surface-variant">
+                    {item.lieuFormation ? `Lieu : ${getLocationLabel(item)}` : ''}
+                    {item.typeBrulage ? ` · Brûlage : ${getBurningTypeLabel(item)}` : ''}
+                  </p>
+                ) : null}
                 <p className="mt-1 text-body-md text-on-surface-variant">
-                  {item.formateurs.filter(Boolean).join(', ') || 'Aucun formateur sélectionné'}
+                  {getFormateursLabel(item)}
                 </p>
                 <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-label-sm font-semibold text-primary">
                   <span className="inline-flex items-center gap-1.5">

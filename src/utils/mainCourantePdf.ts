@@ -274,21 +274,60 @@ function getSiteRows(data: MainCouranteFormData): PdfRow[] {
     ];
   }
 
-  if (data.siteFormation === 'Poissy') {
-    return [
-      { label: 'Masques FFP3', value: scaleValue(data.masquesFfp3, 10, '1 à 10') },
-      { label: 'Gants Nitrile', value: scaleValue(data.gantsNitrile, 10, '1 à 10') },
-      { label: 'Benne à déchet', value: scaleValue(data.benneDechet, 5, 'Vide à Pleine') },
-      { label: 'Panneaux de bois', value: scaleValue(data.panneauxBois, 10, '1 brulage à 10 brulages') },
-      { label: 'Palettes', value: scaleValue(data.palettes, 10, '1 brulage à 10 brulages') },
-      { label: 'Chariot foyer de démarrage', value: data.chariotFoyerDemarrage.join(', ') || 'Non renseigné' },
-    ];
-  }
-
   return [
     { label: 'Masques FFP3', value: scaleValue(data.masquesFfp3, 10, '1 à 10') },
     { label: 'Gants Nitrile', value: scaleValue(data.gantsNitrile, 10, '1 à 10') },
     { label: 'Palettes', value: scaleValue(data.palettes, 10, '1 brulage à 10 brulages') },
+  ];
+}
+
+function getFormationValue(data: MainCouranteFormData) {
+  if (data.formation !== 'Autre :') {
+    return displayValue(data.formation, 'Non applicable');
+  }
+
+  return data.formationAutre.trim()
+    ? `Autre : ${data.formationAutre.trim()}`
+    : 'Autre : Non précisée';
+}
+
+function getLocationValue(data: MainCouranteFormData) {
+  if (data.lieuFormation === 'Friche batimentaire' || data.lieuFormation === 'Autre :') {
+    return data.lieuFormationAutre.trim()
+      ? `${data.lieuFormation} ${data.lieuFormationAutre.trim()}`
+      : `${data.lieuFormation} Non précisé`;
+  }
+
+  return displayValue(data.lieuFormation, 'Non renseigné');
+}
+
+function getBurningTypeValue(data: MainCouranteFormData) {
+  if (data.typeBrulage === 'Feux réels' && data.typeBrulageAutre.trim()) {
+    return `${data.typeBrulage} - ${data.typeBrulageAutre.trim()} mise(s) à feu`;
+  }
+
+  return displayValue(data.typeBrulage);
+}
+
+function getFormateurRows(data: MainCouranteFormData): PdfRow[] {
+  const formateurRows = data.formateurs
+    .map((name, index) => {
+      const trimmedName = name.trim();
+      if (!trimmedName) return null;
+
+      const role = data.formateurRoles[index];
+      return {
+        label: `Formateur N° ${index + 1}${role ? ` - ${role}` : ''}`,
+        value: trimmedName,
+      };
+    })
+    .filter((row): row is PdfRow => row !== null);
+
+  return [
+    { label: 'Adresse email du formateur (SDIS78.FR)', value: displayValue(data.emailFormateur) },
+    ...(formateurRows.length > 0
+      ? formateurRows
+      : [{ label: 'Formateurs', value: 'Aucun formateur sélectionné' }]),
   ];
 }
 
@@ -321,19 +360,14 @@ export async function renderMainCourantePdf(data: MainCouranteFormData) {
   drawGrid(state, [
     { label: 'Date', value: formatMainCouranteDate(data.dateMainCourante) },
     { label: 'Site de formation', value: displayValue(data.siteFormation) },
+    { label: 'Lieu de formation', value: getLocationValue(data) },
     { label: 'Type de session', value: displayValue(data.typeSession, 'Non applicable') },
-    { label: 'Formation', value: displayValue(data.formation, 'Non applicable') },
+    { label: 'Formation', value: getFormationValue(data) },
+    { label: 'Type de brûlage', value: getBurningTypeValue(data) },
   ], regularFont, emphasisFont);
 
   drawSectionTitle(state, 'Formateur et participants', emphasisFont);
-  drawGrid(state, [
-    { label: 'Adresse email du formateur (SDIS78.FR)', value: displayValue(data.emailFormateur) },
-    { label: 'Formateur N° 1', value: displayValue(data.formateurs[0]) },
-    { label: 'Formateur N° 2', value: displayValue(data.formateurs[1]) },
-    { label: 'Formateur N° 3', value: displayValue(data.formateurs[2]) },
-    { label: 'Formateur N° 4', value: displayValue(data.formateurs[3]) },
-    { label: 'Formateur N° 5', value: displayValue(data.formateurs[4]) },
-  ], regularFont, emphasisFont);
+  drawGrid(state, getFormateurRows(data), regularFont, emphasisFont);
 
   drawSectionTitle(state, 'Conditions extérieures', emphasisFont);
   drawGrid(state, [
