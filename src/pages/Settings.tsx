@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { User, Moon, LogOut, Sun, Users } from 'lucide-react';
+import { User, Moon, LogOut, Sun, ShieldCheck } from 'lucide-react';
 import { useAppVersion } from '../hooks/useAppVersion';
 import PageIntro from '../components/PageIntro';
 import { useTheme } from '../contexts/ThemeContext';
@@ -40,20 +40,20 @@ export default function Settings() {
 
         {user?.isAdmin ? (
           <Link
-            to={APP_ROUTES.ADMIN_USERS}
+            to={APP_ROUTES.ADMIN_SETTINGS}
             className="surface-card flex min-h-28 items-start gap-4 p-5 transition-all hover:shadow-ambient"
           >
             <div className="rounded-lg bg-primary/10 p-3">
-              <Users size={22} className="text-primary" />
+              <ShieldCheck size={22} className="text-primary" />
             </div>
             <div>
-              <h2 className="mb-1 text-headline-md text-on-surface">Utilisateurs</h2>
+              <h2 className="mb-1 text-headline-md text-on-surface">Paramètres administrateurs</h2>
               <p className="text-body-md text-on-surface-variant">
-                Invitez, créez et consultez les comptes autorisés dans l’application.
+                Gérez les utilisateurs, les destinataires des formulaires et les comptes enregistrés.
               </p>
               <div className="mt-2 flex items-center gap-1 text-label-sm uppercase text-primary">
-                <Users size={13} />
-                <span>Gérer les accès</span>
+                <ShieldCheck size={13} />
+                <span>Ouvrir les paramètres administrateurs</span>
               </div>
             </div>
           </Link>

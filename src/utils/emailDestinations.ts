@@ -20,6 +20,10 @@ export const DEFAULT_FORM_EMAIL_DESTINATIONS: Readonly<Record<FormEmailDestinati
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+export function isValidEmailRecipient(value: string) {
+  return EMAIL_PATTERN.test(value);
+}
+
 export function createDefaultFormEmailDestinations(): FormEmailDestinations {
   return {
     mainCourante: [...DEFAULT_FORM_EMAIL_DESTINATIONS.mainCourante],
@@ -56,7 +60,7 @@ export function validateFormEmailDestinations(destinations: FormEmailDestination
       return `Renseignez au moins une adresse pour la ${labels[key]}.`;
     }
 
-    const invalidRecipient = recipients.find((recipient) => !EMAIL_PATTERN.test(recipient));
+    const invalidRecipient = recipients.find((recipient) => !isValidEmailRecipient(recipient));
     if (invalidRecipient) {
       return `L’adresse « ${invalidRecipient} » n’est pas valide pour la ${labels[key]}.`;
     }

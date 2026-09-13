@@ -26,7 +26,10 @@ const AddResource = lazy(() => import('./pages/AddResource'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Account = lazy(() => import('./pages/Account'));
+const AdminSettings = lazy(() => import('./pages/AdminSettings'));
 const AdminUsers = lazy(() => import('./pages/AdminUsers'));
+const AdminEmailDestinations = lazy(() => import('./pages/AdminEmailDestinations'));
+const AdminRegisteredAccounts = lazy(() => import('./pages/AdminRegisteredAccounts'));
 const Login = lazy(() => import('./pages/Login'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
@@ -74,6 +77,7 @@ function App() {
                 <Route path="/resources" element={<Navigate to={APP_ROUTES.RESOURCES} replace />} />
                 <Route path="/dashboard" element={<Navigate to={APP_ROUTES.DASHBOARD} replace />} />
                 <Route path="/settings" element={<Navigate to={APP_ROUTES.SETTINGS} replace />} />
+                <Route path="/settings/users" element={<Navigate to={APP_ROUTES.ADMIN_USERS} replace />} />
                 <Route path="/carpool" element={<Navigate to={APP_ROUTES.CARPOOL} replace />} />
 
                 <Route
@@ -100,13 +104,38 @@ function App() {
                   <Route path="dashboard" element={<Dashboard />} />
                   <Route path="settings" element={<Settings />} />
                   <Route
-                    path="settings/users"
+                    path="settings/admin"
+                    element={(
+                      <ProtectedRoute requiredRole="admin">
+                        <AdminSettings />
+                      </ProtectedRoute>
+                    )}
+                  />
+                  <Route
+                    path="settings/admin/users"
                     element={(
                       <ProtectedRoute requiredRole="admin">
                         <AdminUsers />
                       </ProtectedRoute>
                     )}
                   />
+                  <Route
+                    path="settings/admin/destinations"
+                    element={(
+                      <ProtectedRoute requiredRole="admin">
+                        <AdminEmailDestinations />
+                      </ProtectedRoute>
+                    )}
+                  />
+                  <Route
+                    path="settings/admin/accounts"
+                    element={(
+                      <ProtectedRoute requiredRole="admin">
+                        <AdminRegisteredAccounts />
+                      </ProtectedRoute>
+                    )}
+                  />
+                  <Route path="settings/users" element={<Navigate to={APP_ROUTES.ADMIN_USERS} replace />} />
                   <Route path="account" element={<Account />} />
                   <Route path="carpool" element={<Carpool />} />
                   <Route path="carpool/:id" element={<CarpoolPostDetail />} />
