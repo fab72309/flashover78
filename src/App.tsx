@@ -31,7 +31,7 @@ const Login = lazy(() => import('./pages/Login'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const Carpool = lazy(() => import('./pages/Carpool'));
-const CarpoolTripDetail = lazy(() => import('./pages/CarpoolTripDetail'));
+const CarpoolPostDetail = lazy(() => import('./pages/CarpoolPostDetail'));
 const TrainingSessionDetail = lazy(() => import('./pages/TrainingSessionDetail'));
 const DocumentDetail = lazy(() => import('./pages/DocumentDetail'));
 
@@ -109,7 +109,7 @@ function App() {
                   />
                   <Route path="account" element={<Account />} />
                   <Route path="carpool" element={<Carpool />} />
-                  <Route path="carpool/:id" element={<CarpoolTripDetail />} />
+                  <Route path="carpool/:id" element={<CarpoolPostDetail />} />
                 </Route>
               </Routes>
             </Suspense>

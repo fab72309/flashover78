@@ -10,6 +10,8 @@ export const TABLES = {
   RESOURCES: 'resources',
   CARPOOL_TRIPS: 'carpool_trips',
   CARPOOL_REQUESTS: 'carpool_requests',
+  CARPOOL_POSTS: 'carpool_posts',
+  CARPOOL_MATCHES: 'carpool_matches',
   TRAINING_REGISTRATIONS: 'training_registrations',
   TRAINING_AUDIT_LOG: 'training_audit_log',
   MEDICAL_FOLLOW_UPS: 'medical_follow_ups',
@@ -50,6 +52,16 @@ export const RESOURCE_CATEGORY_LABELS: Record<string, string> = {
 
 export const CARPOOL_TRIP_STATUSES = ['open', 'full', 'cancelled', 'completed'] as const;
 export const CARPOOL_REQUEST_STATUSES = ['pending', 'accepted', 'rejected', 'cancelled'] as const;
+export const CARPOOL_POST_KINDS = ['offer', 'need'] as const;
+export const CARPOOL_POST_STATUSES = [
+  'open',
+  'partially_matched',
+  'matched',
+  'completed',
+  'cancelled',
+  'expired',
+] as const;
+export const CARPOOL_MATCH_STATUSES = ['pending', 'accepted', 'rejected', 'cancelled'] as const;
 
 export const TRAINER_LEVELS = ['RSFR', 'FOR INC', 'FOR BAT'] as const;
 export const TRAINER_LEVEL_LABELS: Record<(typeof TRAINER_LEVELS)[number], string> = {

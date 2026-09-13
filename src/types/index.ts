@@ -8,6 +8,15 @@ export type ResourceCategory =
 export type DocumentExpirationState = 'all' | 'valid' | 'expiring' | 'expired';
 export type CarpoolTripStatus = 'open' | 'full' | 'cancelled' | 'completed';
 export type CarpoolRequestStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
+export type CarpoolPostKind = 'offer' | 'need';
+export type CarpoolPostStatus =
+  | 'open'
+  | 'partially_matched'
+  | 'matched'
+  | 'completed'
+  | 'cancelled'
+  | 'expired';
+export type CarpoolMatchStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
 export type TrainingRegistrationStatus = 'registered' | 'waitlisted' | 'cancelled';
 export type TrainingAttendanceStatus = 'pending' | 'present' | 'absent';
 export type AppRole = 'member' | 'contributor' | 'admin';
@@ -211,6 +220,55 @@ export interface CarpoolFilters {
   location?: string;
   onlyAvailable?: boolean;
   date?: string;
+}
+
+export interface CarpoolContact {
+  userId: string;
+  email: string;
+  phone?: string | null;
+}
+
+export interface CarpoolMatch {
+  id: string;
+  offerPostId: string;
+  needPostId: string;
+  offerAuthorId: string;
+  offerAuthorName: string;
+  needAuthorId: string;
+  needAuthorName: string;
+  initiatorId: string;
+  initiatorName: string;
+  seatsRequested: number;
+  message: string | null;
+  status: CarpoolMatchStatus;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CarpoolPost {
+  id: string;
+  eventId?: string | null;
+  eventTitle?: string | null;
+  eventLocation?: string | null;
+  eventDate?: Date | null;
+  authorId: string;
+  authorName: string;
+  kind: CarpoolPostKind;
+  departureCity: string;
+  departureLabel: string;
+  departureDatetime: Date;
+  arrivalLabel: string;
+  requestedSeats?: number | null;
+  availableSeats?: number | null;
+  totalSeats?: number | null;
+  priceNote?: string | null;
+  vehicleNote?: string | null;
+  luggageNote?: string | null;
+  notes?: string | null;
+  status: CarpoolPostStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  matches: CarpoolMatch[];
 }
 
 export type MedicalFollowUpDay = 'Journée complète' | 'Matin' | 'Après-Midi';
