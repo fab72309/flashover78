@@ -8,6 +8,7 @@ import {
   getMedicalFollowUpFilename,
   getMedicalFollowUpFunctionOptions,
   getMedicalFollowUpRoute,
+  isMedicalFollowUpEvolution,
   MEDICAL_FOLLOWUP_OPTIONS,
   validateMedicalFollowUpForm,
 } from './medicalFollowUp';
@@ -127,5 +128,18 @@ describe('suivi médical formateur', () => {
 
     expect(canEditMedicalFollowUp(record, new Date('2026-09-13T09:59:59.000Z'))).toBe(true);
     expect(canEditMedicalFollowUp(record, new Date('2026-09-13T10:00:01.000Z'))).toBe(false);
+  });
+
+  it('identifie une fiche générée après modification comme une évolution', () => {
+    const createdAt = new Date('2026-09-10T10:00:00.000Z');
+
+    expect(isMedicalFollowUpEvolution({
+      createdAt,
+      updatedAt: new Date('2026-09-10T10:00:00.500Z'),
+    })).toBe(false);
+    expect(isMedicalFollowUpEvolution({
+      createdAt,
+      updatedAt: new Date('2026-09-10T10:01:00.000Z'),
+    })).toBe(true);
   });
 });

@@ -192,6 +192,12 @@ export function getMedicalFollowUpFilename(data: MedicalFollowUpFormData, isEvol
   return `${prefix}-${safeName}-${data.dateFormation || 'date'}.pdf`;
 }
 
+export function isMedicalFollowUpEvolution(
+  record: Pick<MedicalFollowUpRecord, 'createdAt' | 'updatedAt'>,
+) {
+  return record.updatedAt.getTime() - record.createdAt.getTime() > 1000;
+}
+
 export function canEditMedicalFollowUp(
   record: Pick<MedicalFollowUpRecord, 'createdAt'>,
   now = new Date(),
