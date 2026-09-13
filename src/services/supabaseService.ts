@@ -43,6 +43,13 @@ import { devUser, isDevAuthBypassEnabled } from '../utils/devAuth';
 import { getDocumentExpirationState } from '../utils/documents';
 import { getPasswordRecoveryRedirectUrl } from '../utils/authRecovery';
 import { normalizeTrainerLevels } from '../utils/trainerLevels';
+import {
+  createDefaultFormEmailDestinations,
+  FORM_EMAIL_DESTINATION_DB_KEYS,
+  normalizeEmailRecipients,
+  validateFormEmailDestinations,
+  type FormEmailDestinations,
+} from '../utils/emailDestinations';
 
 type EventRow = {
   id: string;
@@ -143,6 +150,11 @@ type ProfileDirectoryRow = {
   last_name: string | null;
   trainer_levels: TrainerLevel[] | null;
   updated_at: string;
+};
+
+type EmailDestinationRow = {
+  form_key: string;
+  recipients: string[] | null;
 };
 
 type CarpoolContactRow = {
@@ -406,6 +418,8 @@ let mockManagedUsers: ManagedUser[] = [
     emailConfirmedAt: mockNow,
   },
 ];
+
+let mockFormEmailDestinations = createDefaultFormEmailDestinations();
 
 function createPreviewId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -1345,6 +1359,100 @@ function mapManagedUser(row: {
   };
 }
 
+function mapFormEmailDestinations(rows: EmailDestinationRow[]): FormEmailDestinations {
+  const destinations = createDefaultFormEmailDestinations();
+  const entries = Object.entries(FORM_EMAIL_DESTINATION_DB_KEYS) as Array<[
+    keyof FormEmailDestinations,
+    string,
+  ]>;
+
+  for (const [key, formKey] of entries) {
+    const row = rows.find((candidate) => candidate.form_key === formKey);
+    if (row) {
+      destinations[key] = normalizeEmailRecipients(row.recipients);
+    }
+  }
+
+  return destinations;
+}
+
+function normalizeFormEmailDestinations(destinations: FormEmailDestinations): FormEmailDestinations {
+  return {
+    mainCourante: normalizeEmailRecipients(destinations.mainCourante),
+    suiviMedical: normalizeEmailRecipients(destinations.suiviMedical),
+    demandeReparation: normalizeEmailRecipients(destinations.demandeReparation),
+  };
+}
+
+function toFormEmailDestinationPayload(destinations: FormEmailDestinations) {
+  return [
+    {
+      form_key: FORM_EMAIL_DESTINATION_DB_KEYS.mainCourante,
+      recipients: destinations.mainCourante,
+    },
+    {
+      form_key: FORM_EMAIL_DESTINATION_DB_KEYS.suiviMedical,
+      recipients: destinations.suiviMedical,
+    },
+    {
+      form_key: FORM_EMAIL_DESTINATION_DB_KEYS.demandeReparation,
+      recipients: destinations.demandeReparation,
+    },
+  ];
+}
+
+export async function listFormEmailDestinations(): Promise<FormEmailDestinations> {
+  if (isDevAuthBypassEnabled) {
+    return normalizeFormEmailDestinations(mockFormEmailDestinations);
+  }
+
+  assertSupabaseConfigured();
+  const { data, error } = await supabase
+    .from(TABLES.EMAIL_DESTINATIONS)
+    .select('form_key, recipients');
+
+  if (error) {
+    throw error;
+  }
+
+  return mapFormEmailDestinations((data ?? []) as EmailDestinationRow[]);
+}
+
+export async function getFormEmailDestinations(): Promise<FormEmailDestinations> {
+  try {
+    return await listFormEmailDestinations();
+  } catch (error) {
+    console.warn('Les destinataires configurés sont indisponibles, utilisation des valeurs par défaut.', error);
+    return createDefaultFormEmailDestinations();
+  }
+}
+
+export async function updateFormEmailDestinations(destinations: FormEmailDestinations) {
+  const normalizedDestinations = normalizeFormEmailDestinations(destinations);
+  const validationError = validateFormEmailDestinations(normalizedDestinations);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  if (isDevAuthBypassEnabled) {
+    await ensureCurrentUserIsAdmin();
+    mockFormEmailDestinations = normalizedDestinations;
+    return;
+  }
+
+  assertSupabaseConfigured();
+  const { error } = await supabase.functions.invoke('admin-users', {
+    body: {
+      action: 'update_email_destinations',
+      destinations: toFormEmailDestinationPayload(normalizedDestinations),
+    },
+  });
+
+  if (error) {
+    throw normalizeAdminUsersError(error.message);
+  }
+}
+
 export async function listManagedUsers() {
   if (isDevAuthBypassEnabled) {
     return [...mockManagedUsers];
@@ -1446,6 +1554,30 @@ export async function createManagedUser(input: {
     body: {
       action: 'create',
       ...input,
+    },
+  });
+
+  if (error) {
+    throw normalizeAdminUsersError(error.message);
+  }
+}
+
+export async function deleteManagedUser(userId: string) {
+  if (isDevAuthBypassEnabled) {
+    await ensureCurrentUserIsAdmin();
+    if (userId === devUser.id) {
+      throw new Error('Vous ne pouvez pas supprimer votre propre compte depuis cette page.');
+    }
+    mockManagedUsers = mockManagedUsers.filter((candidate) => candidate.id !== userId);
+    return;
+  }
+
+  assertSupabaseConfigured();
+
+  const { error } = await supabase.functions.invoke('admin-users', {
+    body: {
+      action: 'delete',
+      userId,
     },
   });
 

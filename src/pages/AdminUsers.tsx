@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, MailPlus, Shield, UserPlus } from 'lucide-react';
+import { ArrowLeft, Mail, MailPlus, Save, Shield, Trash2, UserPlus } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import PageIntro from '../components/PageIntro';
+import ConfirmationDialog from '../components/ConfirmationDialog';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import {
   createManagedUser,
+  deleteManagedUser,
   inviteManagedUser,
+  listFormEmailDestinations,
   listManagedUsers,
+  updateFormEmailDestinations,
   updateManagedUserRole,
   updateManagedUserTrainerLevels,
 } from '../services/supabaseService';
@@ -20,6 +24,12 @@ import {
   TRAINER_LEVEL_LABELS,
   TRAINER_LEVELS,
 } from '../utils/constants';
+import {
+  createDefaultFormEmailDestinations,
+  parseEmailRecipients,
+  type FormEmailDestinations,
+  type FormEmailDestinationKey,
+} from '../utils/emailDestinations';
 import { ROLE_LABELS } from '../utils/permissions';
 
 const roleOptions: Array<{ value: AppRole; description: string }> = [
@@ -104,6 +114,15 @@ export default function AdminUsers() {
   const [trainerLevels, setTrainerLevels] = useState<TrainerLevel[]>(['RSFR']);
   const [roleBusy, setRoleBusy] = useState<string | null>(null);
   const [trainerBusy, setTrainerBusy] = useState<string | null>(null);
+  const [emailSettingsLoading, setEmailSettingsLoading] = useState(true);
+  const [emailSettingsBusy, setEmailSettingsBusy] = useState(false);
+  const [emailDestinationDrafts, setEmailDestinationDrafts] = useState<Record<FormEmailDestinationKey, string>>({
+    mainCourante: createDefaultFormEmailDestinations().mainCourante.join('\n'),
+    suiviMedical: createDefaultFormEmailDestinations().suiviMedical.join('\n'),
+    demandeReparation: createDefaultFormEmailDestinations().demandeReparation.join('\n'),
+  });
+  const [pendingDeletion, setPendingDeletion] = useState<ManagedUser | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -119,9 +138,35 @@ export default function AdminUsers() {
     }
   }, [showToast]);
 
+  const loadEmailDestinations = useCallback(async () => {
+    setEmailSettingsLoading(true);
+    try {
+      const destinations = await listFormEmailDestinations();
+      setEmailDestinationDrafts({
+        mainCourante: destinations.mainCourante.join('\n'),
+        suiviMedical: destinations.suiviMedical.join('\n'),
+        demandeReparation: destinations.demandeReparation.join('\n'),
+      });
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : 'Impossible de charger les destinataires.',
+        'error',
+      );
+    } finally {
+      setEmailSettingsLoading(false);
+    }
+  }, [showToast]);
+
   useEffect(() => {
+    if (!user?.isAdmin) {
+      setLoading(false);
+      setEmailSettingsLoading(false);
+      return;
+    }
+
     void loadUsers();
-  }, [loadUsers]);
+    void loadEmailDestinations();
+  }, [loadEmailDestinations, loadUsers, user?.isAdmin]);
 
   if (!user?.isAdmin) {
     return (
@@ -222,6 +267,57 @@ export default function AdminUsers() {
       );
     } finally {
       setTrainerBusy(null);
+    }
+  };
+
+  const updateEmailDestinationDraft = (key: FormEmailDestinationKey, value: string) => {
+    setEmailDestinationDrafts((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleEmailDestinationsSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const destinations: FormEmailDestinations = {
+      mainCourante: parseEmailRecipients(emailDestinationDrafts.mainCourante),
+      suiviMedical: parseEmailRecipients(emailDestinationDrafts.suiviMedical),
+      demandeReparation: parseEmailRecipients(emailDestinationDrafts.demandeReparation),
+    };
+
+    setEmailSettingsBusy(true);
+    try {
+      await updateFormEmailDestinations(destinations);
+      setEmailDestinationDrafts({
+        mainCourante: destinations.mainCourante.join('\n'),
+        suiviMedical: destinations.suiviMedical.join('\n'),
+        demandeReparation: destinations.demandeReparation.join('\n'),
+      });
+      showToast('Destinataires des formulaires mis à jour.', 'success');
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : 'Impossible d’enregistrer les destinataires.',
+        'error',
+      );
+    } finally {
+      setEmailSettingsBusy(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!pendingDeletion) return;
+
+    const target = pendingDeletion;
+    setDeletingUserId(target.id);
+    try {
+      await deleteManagedUser(target.id);
+      setUsers((current) => current.filter((candidate) => candidate.id !== target.id));
+      setPendingDeletion(null);
+      showToast(`Le compte de ${target.displayName} a été supprimé.`, 'success');
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : 'Impossible de supprimer ce compte.',
+        'error',
+      );
+    } finally {
+      setDeletingUserId(null);
     }
   };
 
@@ -344,6 +440,79 @@ export default function AdminUsers() {
       </section>
 
       <section className="surface-card p-5">
+        <div className="flex items-start gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Mail size={21} aria-hidden="true" />
+          </span>
+          <div>
+            <h2 className="text-headline-md text-on-surface">Destinataires des formulaires</h2>
+            <p className="mt-1 text-body-md text-on-surface-variant">
+              Modifiez les adresses utilisées par défaut pour la main courante, le suivi médical et les demandes de réparation.
+            </p>
+          </div>
+        </div>
+
+        {emailSettingsLoading ? (
+          <p className="mt-5 text-body-md text-on-surface-variant">Chargement des destinataires...</p>
+        ) : (
+          <form onSubmit={handleEmailDestinationsSubmit} className="mt-5 space-y-5">
+            <label className="block">
+              <span className="mb-1.5 block text-label-lg text-on-surface">Main courante</span>
+              <textarea
+                value={emailDestinationDrafts.mainCourante}
+                onChange={(event) => updateEmailDestinationDraft('mainCourante', event.target.value)}
+                className="min-h-24 w-full rounded-lg bg-surface-container-highest px-4 py-3 text-on-surface"
+                placeholder="Une adresse par ligne"
+                rows={3}
+                required
+              />
+              <span className="mt-1 block text-label-sm text-on-surface-variant">
+                Une adresse par ligne, ou séparées par une virgule.
+              </span>
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-label-lg text-on-surface">Suivi médical</span>
+              <textarea
+                value={emailDestinationDrafts.suiviMedical}
+                onChange={(event) => updateEmailDestinationDraft('suiviMedical', event.target.value)}
+                className="min-h-24 w-full rounded-lg bg-surface-container-highest px-4 py-3 text-on-surface"
+                placeholder="Une adresse par ligne"
+                rows={3}
+              />
+              <span className="mt-1 block text-label-sm text-on-surface-variant">
+                L’utilisateur connecté est toujours ajouté automatiquement, même si cette liste est vide.
+              </span>
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-label-lg text-on-surface">Demande de réparation</span>
+              <textarea
+                value={emailDestinationDrafts.demandeReparation}
+                onChange={(event) => updateEmailDestinationDraft('demandeReparation', event.target.value)}
+                className="min-h-24 w-full rounded-lg bg-surface-container-highest px-4 py-3 text-on-surface"
+                placeholder="Une adresse par ligne"
+                rows={3}
+                required
+              />
+              <span className="mt-1 block text-label-sm text-on-surface-variant">
+                Utilisé lorsque la main courante contient une réparation ou un remplacement de matériel.
+              </span>
+            </label>
+
+            <button
+              type="submit"
+              disabled={emailSettingsBusy}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Save size={18} aria-hidden="true" />
+              {emailSettingsBusy ? 'Enregistrement...' : 'Enregistrer les destinataires'}
+            </button>
+          </form>
+        )}
+      </section>
+
+      <section className="surface-card p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-headline-md text-on-surface">Comptes enregistrés</h2>
@@ -375,10 +544,26 @@ export default function AdminUsers() {
                     </h3>
                     <p className="text-body-md text-on-surface-variant">{managedUser.email}</p>
                   </div>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-label-sm text-primary">
-                    <Shield size={14} />
-                    Accès : {ROLE_LABELS[managedUser.role]}
-                  </span>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-label-sm text-primary">
+                      <Shield size={14} />
+                      Accès : {ROLE_LABELS[managedUser.role]}
+                    </span>
+                    {managedUser.id === user.id ? (
+                      <span className="text-label-sm text-on-surface-variant">Compte actuel</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setPendingDeletion(managedUser)}
+                        disabled={deletingUserId !== null}
+                        className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-red-300/70 px-3 py-2 text-label-lg font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label={`Supprimer le compte de ${managedUser.displayName}`}
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                        Supprimer
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <TrainerLevelPicker
@@ -425,6 +610,20 @@ export default function AdminUsers() {
           )}
         </div>
       </section>
+
+      <ConfirmationDialog
+        open={pendingDeletion !== null}
+        title="Supprimer ce compte ?"
+        description={pendingDeletion
+          ? `Le compte de ${pendingDeletion.displayName} (${pendingDeletion.email}) sera supprimé définitivement. Ses données personnelles liées à l’application pourront également disparaître. Cette action ne peut pas être annulée.`
+          : ''}
+        confirmLabel="Supprimer le compte"
+        busy={deletingUserId !== null}
+        onCancel={() => {
+          if (deletingUserId === null) setPendingDeletion(null);
+        }}
+        onConfirm={() => void handleDeleteUser()}
+      />
     </div>
   );
 }

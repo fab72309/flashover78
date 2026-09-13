@@ -1,23 +1,33 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { MainCouranteFormData } from '../types';
-import { formatMainCouranteDate } from './mainCourante';
+import {
+  formatMainCouranteDate,
+  MAIN_COURANTE_RENDER_TEMPLATE_URL,
+} from './mainCourante';
 
 const PDF_MIME_TYPE = 'application/pdf';
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
 const PAGE_MARGIN = 42;
 const CONTENT_WIDTH = PAGE_WIDTH - PAGE_MARGIN * 2;
-const NAVY = rgb(18 / 255, 35 / 255, 58 / 255);
-const PRIMARY = rgb(51 / 255, 116 / 255, 181 / 255);
-const PRIMARY_LIGHT = rgb(232 / 255, 241 / 255, 250 / 255);
-const SURFACE = rgb(247 / 255, 249 / 255, 252 / 255);
-const OUTLINE = rgb(205 / 255, 216 / 255, 229 / 255);
+const PRIMARY = rgb(68 / 255, 114 / 255, 196 / 255);
+const PRIMARY_LIGHT = rgb(221 / 255, 235 / 255, 247 / 255);
+const SURFACE = rgb(255 / 255, 255 / 255, 255 / 255);
+const OUTLINE = rgb(91 / 255, 155 / 255, 213 / 255);
 const BODY = rgb(43 / 255, 58 / 255, 77 / 255);
 const MUTED = rgb(93 / 255, 108 / 255, 126 / 255);
 const WHITE = rgb(1, 1, 1);
+const TEMPLATE_PAGE_NUMBER_X = 505;
+const TEMPLATE_PAGE_NUMBER_RIGHT = 520;
+const TEMPLATE_PAGE_NUMBER_Y = 10;
+const TEMPLATE_PAGE_NUMBER_WIDTH = 24;
+const TEMPLATE_PAGE_NUMBER_HEIGHT = 18;
+const BODY_TOP = 145;
+const BODY_BOTTOM = PAGE_HEIGHT - 48;
 
 type PdfPage = ReturnType<PDFDocument['addPage']>;
 type PdfFont = Awaited<ReturnType<PDFDocument['embedFont']>>;
+type PdfEmbeddedPage = Awaited<ReturnType<PDFDocument['embedPage']>>;
 
 interface PdfRow {
   label: string;
@@ -26,6 +36,7 @@ interface PdfRow {
 
 interface RenderState {
   pdf: PDFDocument;
+  templateBackground: PdfEmbeddedPage;
   page: PdfPage;
   cursorTop: number;
 }
@@ -76,79 +87,46 @@ function pageY(page: PdfPage, top: number, height = 0) {
   return page.getHeight() - top - height;
 }
 
-function drawPageHeader(page: PdfPage, regularFont: PdfFont, continuation = false) {
-  if (continuation) {
-    page.drawRectangle({
-      x: 0,
-      y: page.getHeight() - 48,
-      width: page.getWidth(),
-      height: 48,
-      color: NAVY,
-    });
-    page.drawText('FLASHOVER 78 - MAIN COURANTE', {
-      x: PAGE_MARGIN,
-      y: page.getHeight() - 31,
-      size: 11,
-      font: regularFont,
-      color: WHITE,
-    });
-    return;
-  }
-
-  page.drawRectangle({
+function drawTemplateBackground(page: PdfPage, templateBackground: PdfEmbeddedPage) {
+  page.drawPage(templateBackground, {
     x: 0,
-    y: page.getHeight() - 104,
-    width: page.getWidth(),
-    height: 104,
-    color: NAVY,
+    y: 0,
+    width: PAGE_WIDTH,
+    height: PAGE_HEIGHT,
   });
 }
 
-function drawFooter(page: PdfPage, pageNumber: number, pageCount: number, font: PdfFont) {
-  page.drawLine({
-    start: { x: PAGE_MARGIN, y: 30 },
-    end: { x: page.getWidth() - PAGE_MARGIN, y: 30 },
-    thickness: 0.6,
-    color: OUTLINE,
+function drawTemplatePageNumber(page: PdfPage, pageNumber: number, font: PdfFont) {
+  page.drawRectangle({
+    x: TEMPLATE_PAGE_NUMBER_X,
+    y: TEMPLATE_PAGE_NUMBER_Y,
+    width: TEMPLATE_PAGE_NUMBER_WIDTH,
+    height: TEMPLATE_PAGE_NUMBER_HEIGHT,
+    color: WHITE,
   });
-  page.drawText('Flashover 78 - Main courante groupe de formateurs', {
-    x: PAGE_MARGIN,
-    y: 17,
-    size: 7.5,
-    font,
-    color: MUTED,
-  });
-  const pageLabel = `Page ${pageNumber}/${pageCount}`;
+  const pageLabel = String(pageNumber);
   page.drawText(pageLabel, {
-    x: page.getWidth() - PAGE_MARGIN - font.widthOfTextAtSize(pageLabel, 7.5),
-    y: 17,
-    size: 7.5,
-    font,
-    color: MUTED,
-  });
-}
-
-function addContinuationPage(state: RenderState, regularFont: PdfFont, emphasisFont: PdfFont) {
-  state.page = state.pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  drawPageHeader(state.page, regularFont, true);
-  state.page.drawText('Suite du document', {
-    x: PAGE_MARGIN,
-    y: PAGE_HEIGHT - 76,
+    x: TEMPLATE_PAGE_NUMBER_RIGHT - font.widthOfTextAtSize(pageLabel, 9),
+    y: 14,
     size: 9,
-    font: regularFont,
-    color: MUTED,
+    font,
+    color: rgb(128 / 255, 128 / 255, 128 / 255),
   });
-  state.cursorTop = 96;
-  void emphasisFont;
 }
 
-function ensureSpace(state: RenderState, requiredHeight: number, regularFont: PdfFont, emphasisFont: PdfFont) {
-  if (state.cursorTop + requiredHeight <= PAGE_HEIGHT - 44) return;
-  addContinuationPage(state, regularFont, emphasisFont);
+function addContinuationPage(state: RenderState) {
+  state.page = state.pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  drawTemplateBackground(state.page, state.templateBackground);
+  state.cursorTop = BODY_TOP;
 }
 
-function drawSectionTitle(state: RenderState, title: string, emphasisFont: PdfFont, regularFont: PdfFont) {
-  ensureSpace(state, 42, regularFont, emphasisFont);
+function ensureSpace(state: RenderState, requiredHeight: number) {
+  if (state.cursorTop + requiredHeight <= BODY_BOTTOM) return;
+  addContinuationPage(state);
+}
+
+function drawSectionTitle(state: RenderState, title: string, emphasisFont: PdfFont) {
+  ensureSpace(state, 42);
   const height = 28;
   state.page.drawRectangle({
     x: PAGE_MARGIN,
@@ -183,7 +161,7 @@ function drawGrid(
     const pair = rows.slice(index, index + 2);
     const wrapped = pair.map((row) => wrapText(regularFont, row.value, valueSize, columnWidth - 24));
     const rowHeight = Math.max(48, ...wrapped.map((lines) => 26 + lines.length * lineHeight));
-    ensureSpace(state, rowHeight + 8, regularFont, emphasisFont);
+    ensureSpace(state, rowHeight + 8);
 
     pair.forEach((row, pairIndex) => {
       const x = PAGE_MARGIN + pairIndex * (columnWidth + gap);
@@ -233,17 +211,17 @@ function drawFullField(
   let isContinuation = false;
 
   while (lines.length > 0) {
-    const availableHeight = PAGE_HEIGHT - 44 - state.cursorTop;
-    const maxLines = Math.max(1, Math.floor((availableHeight - 38) / lineHeight));
-    if (maxLines < 1) {
-      addContinuationPage(state, regularFont, emphasisFont);
+    const availableHeight = BODY_BOTTOM - state.cursorTop;
+    if (availableHeight < 66) {
+      addContinuationPage(state);
       continue;
     }
+    const maxLines = Math.max(1, Math.floor((availableHeight - 42) / lineHeight));
 
     const chunk = lines.slice(0, maxLines);
     lines = lines.slice(maxLines);
     const height = Math.max(58, 34 + chunk.length * lineHeight);
-    ensureSpace(state, height + 8, regularFont, emphasisFont);
+    ensureSpace(state, height + 8);
     const y = pageY(state.page, state.cursorTop, height);
     state.page.drawRectangle({
       x: PAGE_MARGIN,
@@ -274,7 +252,7 @@ function drawFullField(
     isContinuation = true;
 
     if (lines.length > 0) {
-      addContinuationPage(state, regularFont, emphasisFont);
+      addContinuationPage(state);
     }
   }
 }
@@ -315,36 +293,31 @@ function getSiteRows(data: MainCouranteFormData): PdfRow[] {
 }
 
 export async function renderMainCourantePdf(data: MainCouranteFormData) {
+  const templateResponse = await fetch(MAIN_COURANTE_RENDER_TEMPLATE_URL, { cache: 'no-store' });
+  if (!templateResponse.ok) {
+    throw new Error('Le modèle PDF de main courante est indisponible.');
+  }
+
+  const templatePdf = await PDFDocument.load(await templateResponse.arrayBuffer());
+  const templatePage = templatePdf.getPages()[0];
+  if (!templatePage) {
+    throw new Error('Le modèle PDF de main courante ne contient aucune page.');
+  }
+
   const pdf = await PDFDocument.create();
+  const templateBackground = await pdf.embedPage(templatePage);
   const regularFont = await pdf.embedFont(StandardFonts.Helvetica);
   const emphasisFont = await pdf.embedFont(StandardFonts.HelveticaBold);
   const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  const state: RenderState = { pdf, page, cursorTop: 122 };
+  drawTemplateBackground(page, templateBackground);
+  const state: RenderState = {
+    pdf,
+    templateBackground,
+    page,
+    cursorTop: BODY_TOP,
+  };
 
-  drawPageHeader(page, regularFont);
-  page.drawText('FLASHOVER 78', {
-    x: PAGE_MARGIN,
-    y: PAGE_HEIGHT - 34,
-    size: 10,
-    font: emphasisFont,
-    color: rgb(185 / 255, 213 / 255, 238 / 255),
-  });
-  page.drawText('MAIN COURANTE', {
-    x: PAGE_MARGIN,
-    y: PAGE_HEIGHT - 67,
-    size: 24,
-    font: emphasisFont,
-    color: WHITE,
-  });
-  page.drawText('Groupe de formateurs incendie de structure', {
-    x: PAGE_MARGIN,
-    y: PAGE_HEIGHT - 88,
-    size: 9.5,
-    font: regularFont,
-    color: WHITE,
-  });
-
-  drawSectionTitle(state, 'Synthèse de la session', emphasisFont, regularFont);
+  drawSectionTitle(state, 'Synthèse de la session', emphasisFont);
   drawGrid(state, [
     { label: 'Date', value: formatMainCouranteDate(data.dateMainCourante) },
     { label: 'Site de formation', value: displayValue(data.siteFormation) },
@@ -352,7 +325,7 @@ export async function renderMainCourantePdf(data: MainCouranteFormData) {
     { label: 'Formation', value: displayValue(data.formation, 'Non applicable') },
   ], regularFont, emphasisFont);
 
-  drawSectionTitle(state, 'Formateur et participants', emphasisFont, regularFont);
+  drawSectionTitle(state, 'Formateur et participants', emphasisFont);
   drawGrid(state, [
     { label: 'Adresse email du formateur (SDIS78.FR)', value: displayValue(data.emailFormateur) },
     { label: 'Formateur N° 1', value: displayValue(data.formateurs[0]) },
@@ -362,17 +335,17 @@ export async function renderMainCourantePdf(data: MainCouranteFormData) {
     { label: 'Formateur N° 5', value: displayValue(data.formateurs[4]) },
   ], regularFont, emphasisFont);
 
-  drawSectionTitle(state, 'Conditions extérieures', emphasisFont, regularFont);
+  drawSectionTitle(state, 'Conditions extérieures', emphasisFont);
   drawGrid(state, [
     { label: 'Vent', value: scaleValue(data.vent, 5, 'Faible à Fort') },
     { label: 'Sens du vent', value: displayValue(data.sensDuVent) },
     { label: 'Météo', value: data.meteo.join(', ') || 'Non renseignée' },
   ], regularFont, emphasisFont);
 
-  drawSectionTitle(state, `Éléments du site - ${displayValue(data.siteFormation)}`, emphasisFont, regularFont);
+  drawSectionTitle(state, `Éléments du site - ${displayValue(data.siteFormation)}`, emphasisFont);
   drawGrid(state, getSiteRows(data), regularFont, emphasisFont);
 
-  drawSectionTitle(state, 'Observations et réparations', emphasisFont, regularFont);
+  drawSectionTitle(state, 'Observations et réparations', emphasisFont);
   drawFullField(
     state,
     'Observations, difficultés rencontrées',
@@ -389,7 +362,7 @@ export async function renderMainCourantePdf(data: MainCouranteFormData) {
   );
 
   const pages = pdf.getPages();
-  pages.forEach((pdfPage, index) => drawFooter(pdfPage, index + 1, pages.length, regularFont));
+  pages.forEach((pdfPage, index) => drawTemplatePageNumber(pdfPage, index + 1, regularFont));
   pdf.setTitle(`Main courante - ${displayValue(data.siteFormation)}`);
   pdf.setAuthor('Flashover 78');
   pdf.setSubject('Main courante du groupe de formateurs incendie de structure');

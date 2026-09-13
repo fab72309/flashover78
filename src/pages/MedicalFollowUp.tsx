@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import {
   createMedicalFollowUp,
+  getFormEmailDestinations,
   getMyMedicalFollowUp,
   updateMedicalFollowUp,
   type MedicalFollowUpSubmissionResult,
@@ -21,7 +22,6 @@ import {
   getMedicalFollowUpRoute,
   isMedicalFollowUpLocationWithDetails,
   isMedicalFollowUpTrainerLevel,
-  MEDICAL_FOLLOWUP_ADMIN_EMAIL,
   MEDICAL_FOLLOWUP_OPTIONS,
   openMedicalFollowUpPdf,
   shareMedicalFollowUp,
@@ -29,6 +29,11 @@ import {
 } from '../utils/medicalFollowUp';
 import { renderMedicalFollowUpPdf } from '../utils/medicalFollowUpPdf';
 import { APP_ROUTES } from '../utils/constants';
+import {
+  createDefaultFormEmailDestinations,
+  formatEmailRecipients,
+  mergeEmailRecipients,
+} from '../utils/emailDestinations';
 
 const inputClasses =
   'w-full rounded-squircle-sm border border-outline-variant/70 bg-surface-container-lowest px-4 py-3 text-body-lg text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20';
@@ -77,6 +82,18 @@ export default function MedicalFollowUp() {
   const [editLoading, setEditLoading] = useState(Boolean(editId));
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<MedicalFollowUpSubmissionResult | null>(null);
+  const [emailDestinations, setEmailDestinations] = useState(createDefaultFormEmailDestinations);
+
+  useEffect(() => {
+    let isMounted = true;
+    getFormEmailDestinations().then((destinations) => {
+      if (isMounted) setEmailDestinations(destinations);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!editId || !user || !selectedTrainerLevel) {
@@ -183,7 +200,12 @@ export default function MedicalFollowUp() {
     if (!result) return;
 
     try {
-      const outcome = await shareMedicalFollowUp(result.document, result.filename, form.emailFormateur);
+      const outcome = await shareMedicalFollowUp(
+        result.document,
+        result.filename,
+        form.emailFormateur,
+        emailDestinations.suiviMedical,
+      );
       if (outcome === 'downloaded') {
         showToast('La fiche a été téléchargée et le message de messagerie a été préparé.', 'info');
       }
@@ -204,6 +226,10 @@ export default function MedicalFollowUp() {
 
   const selectedFunctionIsAllowed = selectedTrainerLevel === null
     || functionOptions.some((option) => option.level === selectedTrainerLevel && option.implemented);
+  const medicalRecipientEmails = mergeEmailRecipients(
+    [form.emailFormateur],
+    emailDestinations.suiviMedical,
+  );
 
   if (!canAccessMedicalFollowUp(user) || !selectedFunctionIsAllowed) {
     return (
@@ -331,7 +357,7 @@ export default function MedicalFollowUp() {
       />
 
       <div className="rounded-squircle-sm bg-surface-container px-4 py-3 text-body-md text-on-surface-variant">
-        Les réponses sont enregistrées dans votre espace. Après validation, la fiche est envoyée à votre adresse et à {MEDICAL_FOLLOWUP_ADMIN_EMAIL} lorsque le service d’envoi est configuré.
+        Les réponses sont enregistrées dans votre espace. Après validation, la fiche est envoyée à votre adresse et aux destinataires configurés ({formatEmailRecipients(emailDestinations.suiviMedical)}) lorsque le service d’envoi est disponible.
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -643,7 +669,7 @@ export default function MedicalFollowUp() {
               </h2>
               {result.deliveryStatus === 'sent' ? (
                 <p className="mt-1 text-body-md text-on-surface-variant">
-                  La fiche a été envoyée à {form.emailFormateur} et à {MEDICAL_FOLLOWUP_ADMIN_EMAIL}.
+                  La fiche a été envoyée à {formatEmailRecipients(medicalRecipientEmails)}.
                 </p>
               ) : (
                 <p className="mt-1 text-body-md text-on-surface-variant">

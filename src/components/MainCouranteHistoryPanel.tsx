@@ -1,16 +1,24 @@
 import { useEffect, useState } from 'react';
 import { ClipboardList, Clock3, Download, FileText, Mail, Share2 } from 'lucide-react';
 import LoadingSpinner from './LoadingSpinner';
-import { getMainCourantePdfBlob, listMyMainCourantes } from '../services/supabaseService';
+import {
+  getFormEmailDestinations,
+  getMainCourantePdfBlob,
+  listMyMainCourantes,
+} from '../services/supabaseService';
 import { useToast } from '../contexts/ToastContext';
 import type { MainCouranteRecord } from '../types';
 import {
   downloadMainCourantePdf,
   formatMainCouranteDate,
-  MAIN_COURANTE_ADMIN_EMAIL,
   openMainCourantePdf,
   shareMainCourantePdf,
 } from '../utils/mainCourante';
+import {
+  createDefaultFormEmailDestinations,
+  formatEmailRecipients,
+  mergeEmailRecipients,
+} from '../utils/emailDestinations';
 
 type PdfAction = 'open' | 'download' | 'share';
 
@@ -19,6 +27,7 @@ export default function MainCouranteHistoryPanel({ userId }: { userId: string })
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [activeAction, setActiveAction] = useState<string | null>(null);
+  const [emailDestinations, setEmailDestinations] = useState(createDefaultFormEmailDestinations);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -43,6 +52,17 @@ export default function MainCouranteHistoryPanel({ userId }: { userId: string })
     };
   }, [userId]);
 
+  useEffect(() => {
+    let isMounted = true;
+    getFormEmailDestinations().then((destinations) => {
+      if (isMounted) setEmailDestinations(destinations);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handlePdfAction = async (record: MainCouranteRecord, action: PdfAction) => {
     const actionKey = `${record.id}:${action}`;
     const previewWindow = action === 'open' && typeof window !== 'undefined'
@@ -61,9 +81,18 @@ export default function MainCouranteHistoryPanel({ userId }: { userId: string })
       } else if (action === 'download') {
         downloadMainCourantePdf(document, record.pdfFilename);
       } else {
-        const outcome = await shareMainCourantePdf(document, record.pdfFilename);
+        const repairRecipientEmails = record.reparationsMateriel.trim()
+          ? emailDestinations.demandeReparation
+          : [];
+        const recipientEmails = mergeEmailRecipients(emailDestinations.mainCourante, repairRecipientEmails);
+        const outcome = await shareMainCourantePdf(
+          document,
+          record.pdfFilename,
+          emailDestinations.mainCourante,
+          repairRecipientEmails,
+        );
         if (outcome === 'downloaded') {
-          showToast(`Le PDF a été téléchargé et un message pour ${MAIN_COURANTE_ADMIN_EMAIL} a été préparé.`, 'info');
+          showToast(`Le PDF a été téléchargé et un message pour ${formatEmailRecipients(recipientEmails)} a été préparé.`, 'info');
         } else {
           showToast('Le PDF est prêt dans le partage de votre appareil.', 'info');
         }
@@ -155,7 +184,7 @@ export default function MainCouranteHistoryPanel({ userId }: { userId: string })
                     onClick={() => handlePdfAction(item, 'share')}
                     disabled={activeAction !== null}
                     className="inline-flex min-h-10 items-center justify-center gap-2 rounded-squircle-sm border border-primary/30 px-3 py-2 text-label-lg font-semibold text-primary transition hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label={`Envoyer le PDF de la main courante du ${formatMainCouranteDate(item.dateMainCourante)} à ${MAIN_COURANTE_ADMIN_EMAIL}`}
+                    aria-label={`Envoyer le PDF de la main courante du ${formatMainCouranteDate(item.dateMainCourante)} aux destinataires configurés`}
                   >
                     {typeof navigator !== 'undefined' && typeof navigator.share === 'function' ? <Share2 size={16} /> : <Mail size={16} />}
                     {activeAction === `${item.id}:share` ? 'Préparation...' : 'Envoyer par email'}

@@ -1,7 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const ADMIN_EMAIL = 'flashover78@gmail.com'
+const DEFAULT_ADMIN_EMAILS = ['flashover78@gmail.com']
 const MAX_DOCUMENT_BASE64_LENGTH = 8_000_000
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -70,6 +71,30 @@ async function updateEmailStatus(
     .eq('id', submissionId)
 
   return error
+}
+
+function normalizeEmailRecipients(value: unknown) {
+  const candidates = Array.isArray(value) ? value : [value]
+  return Array.from(new Set(
+    candidates
+      .flatMap((entry) => String(entry ?? '').split(/[\n,;]+/))
+      .map((entry) => entry.trim().toLowerCase())
+      .filter((entry) => EMAIL_PATTERN.test(entry)),
+  ))
+}
+
+async function getConfiguredMedicalRecipients(adminClient: ReturnType<typeof createClient>) {
+  const { data, error } = await adminClient
+    .from('email_destinations')
+    .select('recipients')
+    .eq('form_key', 'suivi_medical')
+    .maybeSingle()
+
+  if (error || !data) {
+    return DEFAULT_ADMIN_EMAILS
+  }
+
+  return normalizeEmailRecipients(data.recipients)
 }
 
 Deno.serve(async (request) => {
@@ -153,7 +178,8 @@ Deno.serve(async (request) => {
     return jsonResponse(400, { error: 'Adresse email utilisateur introuvable.' })
   }
 
-  const recipients = Array.from(new Set([recipientEmail, ADMIN_EMAIL]))
+  const configuredRecipients = await getConfiguredMedicalRecipients(adminClient)
+  const recipients = Array.from(new Set([recipientEmail, ...configuredRecipients]))
   const displayName = `${submission.nom_formateur} ${submission.prenom_formateur}`.trim()
   const subject = `${isEvolution ? 'Evolution Suivi médical' : 'Suivi médical formateur'} - ${displayName} - ${submission.date_formation}`
   const text = [
