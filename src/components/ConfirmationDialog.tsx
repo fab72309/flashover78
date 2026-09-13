@@ -1,4 +1,5 @@
 import { AlertTriangle, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
 
 interface ConfirmationDialogProps {
   open: boolean;
@@ -22,9 +23,9 @@ export default function ConfirmationDialog({
     return null;
   }
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[120] flex items-end justify-center bg-black/45 p-3 sm:items-center"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-3"
       role="presentation"
       onMouseDown={(event) => {
         if (event.currentTarget === event.target && !busy) {
@@ -33,7 +34,7 @@ export default function ConfirmationDialog({
       }}
     >
       <section
-        className="w-full max-w-md rounded-lg border border-outline-variant bg-surface-container-lowest p-5 shadow-ambient-lg"
+        className="max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-lowest p-5 shadow-ambient-lg"
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirmation-title"
@@ -84,6 +85,7 @@ export default function ConfirmationDialog({
           </button>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
