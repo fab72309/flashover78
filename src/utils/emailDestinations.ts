@@ -74,5 +74,5 @@ export function mergeEmailRecipients(...recipientLists: Array<readonly string[]>
 }
 
 export function formatEmailRecipients(recipients: readonly string[]) {
-  return recipients.length > 0 ? recipients.join(', ') : 'l’adresse de l’utilisateur connecté';
+  return recipients.length > 0 ? recipients.join(', ') : 'aucun destinataire supplémentaire';
 }

@@ -303,7 +303,8 @@ export async function shareMainCourantePdf(
   repairRecipientEmails: readonly string[] = [],
 ) {
   const recipients = mergeEmailRecipients(recipientEmails, repairRecipientEmails);
-  const recipientLabel = recipients.join(', ') || MAIN_COURANTE_ADMIN_EMAIL;
+  const effectiveRecipients = recipients.length > 0 ? recipients : [MAIN_COURANTE_ADMIN_EMAIL];
+  const recipientLabel = effectiveRecipients.join(', ');
   const file = new File([documentBlob], filename, { type: 'application/pdf' });
   const canShareFiles = typeof navigator.share === 'function'
     && typeof navigator.canShare === 'function'
@@ -323,6 +324,6 @@ export async function shareMainCourantePdf(
   const body = encodeURIComponent(
     `Bonjour,\n\nVeuillez trouver en pièce jointe la main courante.\n\nLa main courante a été téléchargée sous le nom « ${filename} ». Ajoutez ce fichier avant l’envoi.`,
   );
-  window.location.href = `mailto:${recipients.join(',')}?subject=${subject}&body=${body}`;
+  window.location.href = `mailto:${effectiveRecipients.join(',')}?subject=${subject}&body=${body}`;
   return 'downloaded' as const;
 }

@@ -35,6 +35,7 @@ import type {
   MedicalFollowUpEmailStatus,
   MedicalFollowUpFormData,
   MedicalFollowUpRecord,
+  MainCouranteEmailStatus,
   MainCouranteFormData,
   MainCouranteRecord,
   TrainerLevel,
@@ -226,6 +227,10 @@ type MainCouranteRow = {
   chariot_foyer_demarrage: MainCouranteFormData['chariotFoyerDemarrage'];
   observations_difficultes: string | null;
   reparations_materiel: string | null;
+  email_status: MainCouranteEmailStatus;
+  email_sent_at: string | null;
+  email_provider_id: string | null;
+  email_error: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -613,6 +618,10 @@ function mapMainCourante(row: MainCouranteRow): MainCouranteRecord {
     chariotFoyerDemarrage: row.chariot_foyer_demarrage ?? [],
     observationsDifficultes: row.observations_difficultes ?? '',
     reparationsMateriel: row.reparations_materiel ?? '',
+    emailStatus: row.email_status,
+    emailSentAt: row.email_sent_at ? new Date(row.email_sent_at) : null,
+    emailProviderId: row.email_provider_id,
+    emailError: row.email_error,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -1200,6 +1209,63 @@ export interface MainCouranteSubmissionResult {
   record: MainCouranteRecord;
   document: Blob;
   filename: string;
+  deliveryStatus: MainCouranteDeliveryStatus;
+  deliveryError: string | null;
+}
+
+export type MainCouranteDeliveryStatus = MainCouranteEmailStatus | 'not_configured';
+
+export interface MainCouranteDeliveryResult {
+  deliveryStatus: MainCouranteDeliveryStatus;
+  deliveryError: string | null;
+  providerId: string | null;
+}
+
+function getMainCouranteDeliveryError() {
+  return 'La main courante est enregistrée, mais son envoi automatique n’a pas pu être confirmé.';
+}
+
+export async function sendMainCouranteEmail(
+  submissionId: string,
+  forceResend = false,
+): Promise<MainCouranteDeliveryResult> {
+  if (isDevAuthBypassEnabled) {
+    return {
+      deliveryStatus: 'not_configured',
+      deliveryError: 'Mode de démonstration : aucun email n’est envoyé.',
+      providerId: null,
+    };
+  }
+
+  assertSupabaseConfigured();
+
+  try {
+    const { data, error } = await supabase.functions.invoke('main-courante-email', {
+      body: { submissionId, forceResend },
+    });
+
+    if (error || data?.status !== 'sent') {
+      console.error('Main courante email delivery failed', error ?? data);
+      return {
+        deliveryStatus: 'failed',
+        deliveryError: getMainCouranteDeliveryError(),
+        providerId: null,
+      };
+    }
+
+    return {
+      deliveryStatus: 'sent',
+      deliveryError: null,
+      providerId: typeof data.providerId === 'string' ? data.providerId : null,
+    };
+  } catch (error) {
+    console.error('Main courante email delivery failed', error);
+    return {
+      deliveryStatus: 'failed',
+      deliveryError: getMainCouranteDeliveryError(),
+      providerId: null,
+    };
+  }
 }
 
 export async function createMainCourante(
@@ -1223,12 +1289,26 @@ export async function createMainCourante(
       pdfStoragePath,
       pdfFilename: safeFilename,
       pdfFileSize: document.size,
+      emailStatus: 'failed',
+      emailSentAt: null,
+      emailProviderId: null,
+      emailError: 'Mode de démonstration : aucun email n’est envoyé.',
       createdAt: now,
       updatedAt: now,
     };
     mockMainCourantes = [record, ...mockMainCourantes];
     mockMainCourantePdfs.set(id, document);
-    return { record, document, filename: safeFilename };
+    return {
+      record: {
+        ...record,
+        emailStatus: 'failed',
+        emailError: 'Mode de démonstration : aucun email n’est envoyé.',
+      },
+      document,
+      filename: safeFilename,
+      deliveryStatus: 'not_configured',
+      deliveryError: 'Mode de démonstration : aucun email n’est envoyé.',
+    };
   }
 
   assertSupabaseConfigured();
@@ -1265,8 +1345,23 @@ export async function createMainCourante(
       throw error;
     }
 
-    const record = mapMainCourante(data as MainCouranteRow);
-    return { record, document, filename: safeFilename };
+    const initialRecord = mapMainCourante(data as MainCouranteRow);
+    const delivery = await sendMainCouranteEmail(initialRecord.id);
+    const record: MainCouranteRecord = {
+      ...initialRecord,
+      emailStatus: delivery.deliveryStatus === 'sent' ? 'sent' : 'failed',
+      emailSentAt: delivery.deliveryStatus === 'sent' ? new Date() : null,
+      emailProviderId: delivery.providerId,
+      emailError: delivery.deliveryError,
+    };
+
+    return {
+      record,
+      document,
+      filename: safeFilename,
+      deliveryStatus: delivery.deliveryStatus,
+      deliveryError: delivery.deliveryError,
+    };
   } catch (error) {
     try {
       await removeUploadedFile(STORAGE_BUCKETS.MAIN_COURANTES, pdfStoragePath);
@@ -1369,7 +1464,10 @@ function mapFormEmailDestinations(rows: EmailDestinationRow[]): FormEmailDestina
   for (const [key, formKey] of entries) {
     const row = rows.find((candidate) => candidate.form_key === formKey);
     if (row) {
-      destinations[key] = normalizeEmailRecipients(row.recipients);
+      const recipients = normalizeEmailRecipients(row.recipients);
+      if (key === 'suiviMedical' || recipients.length > 0) {
+        destinations[key] = recipients;
+      }
     }
   }
 
