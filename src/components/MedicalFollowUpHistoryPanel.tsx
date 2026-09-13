@@ -14,11 +14,15 @@ import {
   isMedicalFollowUpEvolution,
   openMedicalFollowUpPdf,
   shareMedicalFollowUp,
-  MEDICAL_FOLLOWUP_ADMIN_EMAIL,
 } from '../utils/medicalFollowUp';
-import { listMyMedicalFollowUps } from '../services/supabaseService';
+import { getFormEmailDestinations, listMyMedicalFollowUps } from '../services/supabaseService';
 import type { MedicalFollowUpRecord } from '../types';
 import { renderMedicalFollowUpPdf } from '../utils/medicalFollowUpPdf';
+import {
+  createDefaultFormEmailDestinations,
+  formatEmailRecipients,
+  mergeEmailRecipients,
+} from '../utils/emailDestinations';
 
 type PdfAction = 'open' | 'download' | 'share';
 
@@ -41,6 +45,7 @@ export default function MedicalFollowUpHistoryPanel({ userId }: { userId: string
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [activeAction, setActiveAction] = useState<string | null>(null);
+  const [emailDestinations, setEmailDestinations] = useState(createDefaultFormEmailDestinations);
 
   useEffect(() => {
     let isMounted = true;
@@ -64,6 +69,17 @@ export default function MedicalFollowUpHistoryPanel({ userId }: { userId: string
     };
   }, [userId]);
 
+  useEffect(() => {
+    let isMounted = true;
+    getFormEmailDestinations().then((destinations) => {
+      if (isMounted) setEmailDestinations(destinations);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handlePdfAction = async (record: MedicalFollowUpRecord, action: PdfAction) => {
     const actionKey = `${record.id}:${action}`;
     const previewWindow = action === 'open' && typeof window !== 'undefined'
@@ -84,9 +100,18 @@ export default function MedicalFollowUpHistoryPanel({ userId }: { userId: string
       } else if (action === 'download') {
         downloadMedicalFollowUp(document, filename);
       } else {
-        const outcome = await shareMedicalFollowUp(document, filename, record.emailFormateur);
+        const recipientEmails = mergeEmailRecipients(
+          [record.emailFormateur],
+          emailDestinations.suiviMedical,
+        );
+        const outcome = await shareMedicalFollowUp(
+          document,
+          filename,
+          record.emailFormateur,
+          emailDestinations.suiviMedical,
+        );
         if (outcome === 'downloaded') {
-          showToast(`Le PDF a été téléchargé et un message pour ${record.emailFormateur} et ${MEDICAL_FOLLOWUP_ADMIN_EMAIL} a été préparé.`, 'info');
+          showToast(`Le PDF a été téléchargé et un message pour ${formatEmailRecipients(recipientEmails)} a été préparé.`, 'info');
         } else {
           showToast('Le PDF est prêt dans le partage de votre appareil.', 'info');
         }

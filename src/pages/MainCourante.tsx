@@ -1,10 +1,14 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowLeft, CheckCircle2, ClipboardList, Download, FileText, Mail, RotateCcw, Share2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PageIntro from '../components/PageIntro';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { createMainCourante, type MainCouranteSubmissionResult } from '../services/supabaseService';
+import {
+  createMainCourante,
+  getFormEmailDestinations,
+  type MainCouranteSubmissionResult,
+} from '../services/supabaseService';
 import type {
   MainCouranteFormData,
   MainCouranteSite,
@@ -26,12 +30,16 @@ import {
   MAIN_COURANTE_WEATHER,
   MAIN_COURANTE_WIND_DIRECTIONS,
   MAIN_COURANTE_WIND_STRENGTHS,
-  MAIN_COURANTE_ADMIN_EMAIL,
   openMainCourantePdf,
   shareMainCourantePdf,
   validateMainCouranteForm,
 } from '../utils/mainCourante';
 import { APP_ROUTES } from '../utils/constants';
+import {
+  createDefaultFormEmailDestinations,
+  formatEmailRecipients,
+  mergeEmailRecipients,
+} from '../utils/emailDestinations';
 import { renderMainCourantePdf } from '../utils/mainCourantePdf';
 
 const inputClasses =
@@ -401,6 +409,18 @@ export default function MainCourante() {
   const [form, setForm] = useState<MainCouranteFormData>(() => createInitialMainCouranteForm(user));
   const [submitting, setSubmitting] = useState(false);
   const [submission, setSubmission] = useState<MainCouranteSubmissionResult | null>(null);
+  const [emailDestinations, setEmailDestinations] = useState(createDefaultFormEmailDestinations);
+
+  useEffect(() => {
+    let isMounted = true;
+    getFormEmailDestinations().then((destinations) => {
+      if (isMounted) setEmailDestinations(destinations);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const updateField = <K extends keyof MainCouranteFormData>(
     field: K,
@@ -496,10 +516,20 @@ export default function MainCourante() {
   const handleShare = async () => {
     if (!submission) return;
 
+    const repairRecipientEmails = submission.record.reparationsMateriel.trim()
+      ? emailDestinations.demandeReparation
+      : [];
+    const recipientEmails = mergeEmailRecipients(emailDestinations.mainCourante, repairRecipientEmails);
+
     try {
-      const outcome = await shareMainCourantePdf(submission.document, submission.filename);
+      const outcome = await shareMainCourantePdf(
+        submission.document,
+        submission.filename,
+        emailDestinations.mainCourante,
+        repairRecipientEmails,
+      );
       if (outcome === 'downloaded') {
-        showToast('Le PDF a été téléchargé et un message pour flashover78@gmail.com a été préparé.', 'info');
+        showToast(`Le PDF a été téléchargé et un message pour ${formatEmailRecipients(recipientEmails)} a été préparé.`, 'info');
       } else {
         showToast('Le PDF est prêt dans le partage de votre appareil.', 'info');
       }
@@ -508,6 +538,15 @@ export default function MainCourante() {
       showToast('Le partage de la main courante n’a pas abouti.', 'error');
     }
   };
+
+  const submissionRecipientEmails = submission
+    ? mergeEmailRecipients(
+      emailDestinations.mainCourante,
+      submission.record.reparationsMateriel.trim()
+        ? emailDestinations.demandeReparation
+        : [],
+    )
+    : emailDestinations.mainCourante;
 
   return (
     <div className="space-y-5 fade-in">
@@ -694,7 +733,7 @@ export default function MainCourante() {
             </div>
           </div>
           <p className="rounded-squircle-sm bg-surface-container px-4 py-3 text-body-md text-on-surface-variant">
-            Pour l’envoyer à {MAIN_COURANTE_ADMIN_EMAIL}, utilisez le partage natif de l’appareil lorsque celui-ci permet de joindre le PDF. Sinon, le fichier est téléchargé et un message prérempli s’ouvre ; ajoutez le fichier avant l’envoi.
+            Pour l’envoyer à {formatEmailRecipients(submissionRecipientEmails)}, utilisez le partage natif de l’appareil lorsque celui-ci permet de joindre le PDF. Sinon, le fichier est téléchargé et un message prérempli s’ouvre ; ajoutez le fichier avant l’envoi.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <button
@@ -719,7 +758,7 @@ export default function MainCourante() {
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-squircle-sm border border-primary/30 px-4 py-2.5 text-body-md font-semibold text-primary transition hover:bg-primary/5"
             >
               {typeof navigator !== 'undefined' && typeof navigator.share === 'function' ? <Share2 size={18} /> : <Mail size={18} />}
-              Envoyer à {MAIN_COURANTE_ADMIN_EMAIL}
+              Envoyer à {formatEmailRecipients(submissionRecipientEmails)}
             </button>
             <button
               type="button"

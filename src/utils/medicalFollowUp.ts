@@ -5,12 +5,16 @@ import type {
   TrainerLevel,
 } from '../types';
 import { APP_ROUTES, TRAINER_LEVEL_LABELS, TRAINER_LEVELS } from './constants';
+import {
+  DEFAULT_FORM_EMAIL_DESTINATIONS,
+  mergeEmailRecipients,
+} from './emailDestinations';
 
 export const MEDICAL_FOLLOWUP_TEMPLATE_PATH = '/templates/suivi-medical-formateur.pdf';
 export const MEDICAL_FOLLOWUP_RENDER_TEMPLATE_PATH = '/templates/suivi-medical-formateur-clean.pdf';
 export const MEDICAL_FOLLOWUP_RENDER_TEMPLATE_URL = `${MEDICAL_FOLLOWUP_RENDER_TEMPLATE_PATH}?v=${encodeURIComponent(import.meta.env.VITE_APP_VERSION || 'current')}`;
 export const MEDICAL_FOLLOWUP_DOCX_TEMPLATE_PATH = '/templates/suivi-medical-formateur.docx';
-export const MEDICAL_FOLLOWUP_ADMIN_EMAIL = 'flashover78@gmail.com';
+export const MEDICAL_FOLLOWUP_ADMIN_EMAIL = DEFAULT_FORM_EMAIL_DESTINATIONS.suiviMedical[0];
 export const MEDICAL_FOLLOWUP_IMPLEMENTED_FUNCTIONS: readonly TrainerLevel[] = TRAINER_LEVELS;
 export const MEDICAL_FOLLOWUP_EDIT_WINDOW_MS = 72 * 60 * 60 * 1000;
 
@@ -231,7 +235,9 @@ export async function shareMedicalFollowUp(
   documentBlob: Blob,
   filename: string,
   recipientEmail: string,
+  additionalRecipientEmails: readonly string[] = DEFAULT_FORM_EMAIL_DESTINATIONS.suiviMedical,
 ) {
+  const recipients = mergeEmailRecipients([recipientEmail], additionalRecipientEmails);
   const file = new File([documentBlob], filename, {
     type: 'application/pdf',
   });
@@ -249,12 +255,12 @@ export async function shareMedicalFollowUp(
   }
 
   downloadMedicalFollowUp(documentBlob, filename);
-  const recipients = [recipientEmail, MEDICAL_FOLLOWUP_ADMIN_EMAIL].filter(Boolean).join(',');
+  const recipientList = recipients.join(',');
   const subject = encodeURIComponent('Suivi médical formateur');
   const body = encodeURIComponent(
     'La fiche a été téléchargée. Ajoutez le fichier en pièce jointe avant d’envoyer ce message.',
   );
-  window.location.href = `mailto:${recipients}?subject=${subject}&body=${body}`;
+  window.location.href = `mailto:${recipientList}?subject=${subject}&body=${body}`;
   return 'downloaded' as const;
 }
 

@@ -17,11 +17,70 @@ function jsonResponse(status: number, body: unknown) {
 
 const allowedRoles = new Set(['member', 'contributor', 'admin'])
 const allowedTrainerLevels = ['RSFR', 'FOR INC', 'FOR BAT'] as const
+const allowedEmailDestinationKeys = ['main_courante', 'suivi_medical', 'demande_reparation'] as const
+const requiredEmailDestinationKeys = new Set(['main_courante', 'demande_reparation'])
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function normalizeTrainerLevels(value: unknown) {
   const candidates = Array.isArray(value) ? value.map((entry) => String(entry).trim().toUpperCase()) : []
   const levels = allowedTrainerLevels.filter((level) => candidates.includes(level))
   return levels.length > 0 ? levels : ['RSFR']
+}
+
+function normalizeEmailRecipients(value: unknown) {
+  const candidates = Array.isArray(value) ? value : [value]
+  return Array.from(new Set(
+    candidates
+      .flatMap((entry) => String(entry ?? '').split(/[\n,;]+/))
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean),
+  ))
+}
+
+function parseEmailDestinations(value: unknown) {
+  if (!Array.isArray(value)) {
+    throw new Error('La liste des destinataires est invalide.')
+  }
+
+  const destinations = new Map<string, string[]>()
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') {
+      throw new Error('La liste des destinataires est invalide.')
+    }
+
+    const formKey = String((entry as { form_key?: unknown }).form_key ?? '')
+    if (!allowedEmailDestinationKeys.includes(formKey as typeof allowedEmailDestinationKeys[number])) {
+      throw new Error('Le type de formulaire est invalide.')
+    }
+
+    if (destinations.has(formKey)) {
+      throw new Error('Un type de formulaire est présent plusieurs fois.')
+    }
+
+    const recipients = normalizeEmailRecipients((entry as { recipients?: unknown }).recipients)
+    if (recipients.length > 20) {
+      throw new Error('Une liste de destinataires ne peut pas dépasser 20 adresses.')
+    }
+    if (requiredEmailDestinationKeys.has(formKey) && recipients.length === 0) {
+      throw new Error('Les formulaires principaux doivent conserver au moins un destinataire.')
+    }
+
+    const invalidRecipient = recipients.find((recipient) => !emailPattern.test(recipient))
+    if (invalidRecipient) {
+      throw new Error(`L’adresse « ${invalidRecipient} » n’est pas valide.`)
+    }
+
+    destinations.set(formKey, recipients)
+  }
+
+  if (destinations.size !== allowedEmailDestinationKeys.length) {
+    throw new Error('Les trois types de formulaire doivent être configurés.')
+  }
+
+  return allowedEmailDestinationKeys.map((formKey) => ({
+    form_key: formKey,
+    recipients: destinations.get(formKey) ?? [],
+  }))
 }
 
 Deno.serve(async (request) => {
@@ -128,6 +187,79 @@ Deno.serve(async (request) => {
         }
       }),
     })
+  }
+
+  if (action === 'delete') {
+    const userId = String(payload.userId ?? '').trim()
+    if (!userId) {
+      return jsonResponse(400, { error: 'Utilisateur manquant.' })
+    }
+
+    if (userId === user.id) {
+      return jsonResponse(409, { error: 'Vous ne pouvez pas supprimer votre propre compte.' })
+    }
+
+    const { data: targetUser, error: targetUserError } = await adminClient.auth.admin.getUserById(userId)
+    if (targetUserError || !targetUser.user) {
+      return jsonResponse(404, { error: targetUserError?.message ?? 'Utilisateur introuvable.' })
+    }
+
+    const { data: profiles, error: profilesError } = await adminClient
+      .from('profiles')
+      .select('id, role, is_admin')
+
+    if (profilesError) {
+      return jsonResponse(500, { error: profilesError.message })
+    }
+
+    const targetProfile = (profiles ?? []).find((entry) => entry.id === userId)
+    const targetIsAdmin = targetProfile?.role === 'admin' || targetProfile?.is_admin === true
+    if (targetIsAdmin) {
+      const adminCount = (profiles ?? []).filter((entry) => entry.role === 'admin' || entry.is_admin === true).length
+      if (adminCount <= 1) {
+        return jsonResponse(409, { error: 'Le dernier administrateur ne peut pas être supprimé.' })
+      }
+    }
+
+    const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId)
+    if (deleteError) {
+      if (/foreign key|violates/i.test(deleteError.message)) {
+        return jsonResponse(409, {
+          error: 'Ce compte possède encore un document partagé qui doit être réattribué avant suppression.',
+        })
+      }
+      return jsonResponse(500, { error: deleteError.message })
+    }
+
+    return jsonResponse(200, { success: true })
+  }
+
+  if (action === 'update_email_destinations') {
+    let destinations
+    try {
+      destinations = parseEmailDestinations(payload.destinations)
+    } catch (error) {
+      return jsonResponse(400, {
+        error: error instanceof Error ? error.message : 'Les destinataires sont invalides.',
+      })
+    }
+
+    const { error: updateError } = await adminClient
+      .from('email_destinations')
+      .upsert(
+        destinations.map((destination) => ({
+          ...destination,
+          updated_at: new Date().toISOString(),
+          updated_by: user.id,
+        })),
+        { onConflict: 'form_key' },
+      )
+
+    if (updateError) {
+      return jsonResponse(500, { error: updateError.message })
+    }
+
+    return jsonResponse(200, { success: true })
   }
 
   if (action === 'update_trainer_levels') {

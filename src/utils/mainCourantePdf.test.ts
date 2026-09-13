@@ -1,5 +1,5 @@
 import { PDFDocument } from 'pdf-lib';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 import type { AppUser, MainCouranteFormData } from '../types';
 import { createInitialMainCouranteForm } from './mainCourante';
 import { renderMainCourantePdf } from './mainCourantePdf';
@@ -40,6 +40,23 @@ function validForm(): MainCouranteFormData {
 }
 
 describe('main courante PDF', () => {
+  beforeAll(async () => {
+    const templatePdf = await PDFDocument.create();
+    const templatePage = templatePdf.addPage([595.28, 841.89]);
+    templatePage.drawRectangle({ x: 0, y: 0, width: 1, height: 1 });
+    const template = await templatePdf.save();
+    const templateBody = new ArrayBuffer(template.byteLength);
+    new Uint8Array(templateBody).set(template);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(templateBody, {
+      status: 200,
+      headers: { 'content-type': 'application/pdf' },
+    })));
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('génère un PDF A4 lisible avec les données de la session', async () => {
     const document = await renderMainCourantePdf(validForm());
     const loadedPdf = await PDFDocument.load(await document.arrayBuffer());

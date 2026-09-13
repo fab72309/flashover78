@@ -99,7 +99,14 @@ function App() {
                   <Route path="resources/document/:id" element={<DocumentDetail />} />
                   <Route path="dashboard" element={<Dashboard />} />
                   <Route path="settings" element={<Settings />} />
-                  <Route path="settings/users" element={<AdminUsers />} />
+                  <Route
+                    path="settings/users"
+                    element={(
+                      <ProtectedRoute requiredRole="admin">
+                        <AdminUsers />
+                      </ProtectedRoute>
+                    )}
+                  />
                   <Route path="account" element={<Account />} />
                   <Route path="carpool" element={<Carpool />} />
                   <Route path="carpool/:id" element={<CarpoolTripDetail />} />

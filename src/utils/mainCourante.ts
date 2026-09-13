@@ -15,8 +15,13 @@ import type {
   MainCouranteWindStrength,
 } from '../types';
 import { APP_ROUTES } from './constants';
+import {
+  DEFAULT_FORM_EMAIL_DESTINATIONS,
+  mergeEmailRecipients,
+} from './emailDestinations';
 
-export const MAIN_COURANTE_ADMIN_EMAIL = 'flashover78@gmail.com';
+export const MAIN_COURANTE_ADMIN_EMAIL = DEFAULT_FORM_EMAIL_DESTINATIONS.mainCourante[0];
+export const MAIN_COURANTE_RENDER_TEMPLATE_URL = '/templates/main-courante.pdf';
 
 export const MAIN_COURANTE_SITES = [
   'Montigny le Bretonneux',
@@ -291,7 +296,14 @@ export function openMainCourantePdf(
   return true;
 }
 
-export async function shareMainCourantePdf(documentBlob: Blob, filename: string) {
+export async function shareMainCourantePdf(
+  documentBlob: Blob,
+  filename: string,
+  recipientEmails: readonly string[] = DEFAULT_FORM_EMAIL_DESTINATIONS.mainCourante,
+  repairRecipientEmails: readonly string[] = [],
+) {
+  const recipients = mergeEmailRecipients(recipientEmails, repairRecipientEmails);
+  const recipientLabel = recipients.join(', ') || MAIN_COURANTE_ADMIN_EMAIL;
   const file = new File([documentBlob], filename, { type: 'application/pdf' });
   const canShareFiles = typeof navigator.share === 'function'
     && typeof navigator.canShare === 'function'
@@ -301,7 +313,7 @@ export async function shareMainCourantePdf(documentBlob: Blob, filename: string)
     await navigator.share({
       files: [file],
       title: 'Main courante',
-      text: `Main courante à transmettre à ${MAIN_COURANTE_ADMIN_EMAIL}`,
+      text: `Main courante à transmettre à ${recipientLabel}`,
     });
     return 'shared' as const;
   }
@@ -311,6 +323,6 @@ export async function shareMainCourantePdf(documentBlob: Blob, filename: string)
   const body = encodeURIComponent(
     `Bonjour,\n\nVeuillez trouver en pièce jointe la main courante.\n\nLa main courante a été téléchargée sous le nom « ${filename} ». Ajoutez ce fichier avant l’envoi.`,
   );
-  window.location.href = `mailto:${MAIN_COURANTE_ADMIN_EMAIL}?subject=${subject}&body=${body}`;
+  window.location.href = `mailto:${recipients.join(',')}?subject=${subject}&body=${body}`;
   return 'downloaded' as const;
 }

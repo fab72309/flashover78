@@ -14,6 +14,7 @@ export const TABLES = {
   TRAINING_AUDIT_LOG: 'training_audit_log',
   MEDICAL_FOLLOW_UPS: 'medical_follow_ups',
   MAIN_COURANTES: 'main_courantes',
+  EMAIL_DESTINATIONS: 'email_destinations',
 } as const;
 
 export const STORAGE_BUCKETS = {
