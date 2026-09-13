@@ -6,21 +6,22 @@ import { fr } from 'date-fns/locale';
 import PageIntro from '../components/PageIntro';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useAuth } from '../contexts/AuthContext';
-import { listEvents, listMyRequests, listResources, listTrips } from '../services/supabaseService';
-import type { CalendarEvent, CarpoolMyRequest, CarpoolTrip, Resource } from '../types';
+import { listEvents, listResources } from '../services/supabaseService';
+import { listCarpoolPosts, listMyCarpoolPosts } from '../services/carpoolMobilityService';
+import type { CalendarEvent, CarpoolPost, Resource } from '../types';
 import { APP_ROUTES } from '../utils/constants';
 
 interface DashboardData {
   events: CalendarEvent[];
-  trips: CarpoolTrip[];
-  requests: CarpoolMyRequest[];
+  posts: CarpoolPost[];
+  myPosts: CarpoolPost[];
   resources: Resource[];
 }
 
 const emptyData: DashboardData = {
   events: [],
-  trips: [],
-  requests: [],
+  posts: [],
+  myPosts: [],
   resources: [],
 };
 
@@ -40,13 +41,13 @@ function Dashboard() {
     setError(null);
 
     try {
-      const [events, trips, requests, resources] = await Promise.all([
+      const [events, posts, myPosts, resources] = await Promise.all([
         listEvents(),
-        listTrips(),
-        listMyRequests(user.id),
+        listCarpoolPosts(),
+        listMyCarpoolPosts(user.id),
         listResources(),
       ]);
-      setData({ events, trips, requests, resources });
+      setData({ events, posts, myPosts, resources });
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Impossible de charger le tableau de bord');
@@ -63,10 +64,13 @@ function Dashboard() {
   const upcomingEvents = data.events
     .filter((event) => event.date >= now)
     .sort((a, b) => a.date.getTime() - b.date.getTime());
-  const openTrips = data.trips.filter(
-    (trip) => trip.status === 'open' && trip.departureDatetime >= now
+  const activePosts = data.posts.filter(
+    (post) => ['open', 'partially_matched'].includes(post.status) && post.departureDatetime >= now
   );
-  const pendingRequests = data.requests.filter((request) => request.status === 'pending');
+  const pendingMatches = Array.from(new Map(
+    data.myPosts
+      .flatMap((post) => post.matches.filter((match) => match.status === 'pending').map((match) => [match.id, { match, post }] as const))
+  ).values());
 
   return (
     <div className="space-y-5 fade-in">
@@ -105,11 +109,11 @@ function Dashboard() {
               label="Sessions à venir"
               value={upcomingEvents.length}
             />
-            <Metric icon={<CarFront size={20} />} label="Trajets ouverts" value={openTrips.length} />
+            <Metric icon={<CarFront size={20} />} label="Publications actives" value={activePosts.length} />
             <Metric
               icon={<Clock3 size={20} />}
-              label="Demandes en attente"
-              value={pendingRequests.length}
+              label="Correspondances en attente"
+              value={pendingMatches.length}
             />
             <Metric icon={<BookOpen size={20} />} label="Ressources indexées" value={data.resources.length} />
           </section>
@@ -158,7 +162,7 @@ function Dashboard() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-headline-md text-on-surface">Coordination des trajets</h2>
-                  <p className="mt-1 text-body-md text-on-surface-variant">Départs ouverts et demandes à suivre.</p>
+                  <p className="mt-1 text-body-md text-on-surface-variant">Publications actives et correspondances à suivre.</p>
                 </div>
                 <button
                   type="button"
@@ -168,34 +172,34 @@ function Dashboard() {
                   Ouvrir
                 </button>
               </div>
-              {openTrips.length === 0 && pendingRequests.length === 0 ? (
+              {activePosts.length === 0 && pendingMatches.length === 0 ? (
                 <EmptyState text="Aucune action de covoiturage en attente." />
               ) : (
                 <>
-                  {pendingRequests.slice(0, 2).map((request) => (
+                  {pendingMatches.slice(0, 2).map(({ match, post }) => (
                     <button
                       type="button"
-                      key={request.id}
-                      onClick={() => navigate(`${APP_ROUTES.CARPOOL}/${request.tripId}`)}
+                      key={match.id}
+                      onClick={() => navigate(`${APP_ROUTES.CARPOOL}/${post.id}`)}
                       className="surface-card flex w-full items-start gap-4 p-4 text-left"
                     >
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800">
                         <Clock3 size={20} />
                       </span>
                       <span>
-                        <span className="block font-semibold text-on-surface">Demande en attente</span>
+                        <span className="block font-semibold text-on-surface">Correspondance en attente</span>
                         <span className="mt-1 block text-body-md text-on-surface-variant">
-                          {request.seatsRequested} place{request.seatsRequested > 1 ? 's' : ''} demandée
-                          {request.trip ? ` · ${request.trip.departureCity}` : ''}
+                          {match.seatsRequested} place{match.seatsRequested > 1 ? 's' : ''}
+                          {` · ${post.departureCity} → ${post.arrivalLabel}`}
                         </span>
                       </span>
                     </button>
                   ))}
-                  {openTrips.slice(0, Math.max(0, 3 - pendingRequests.length)).map((trip) => (
+                  {activePosts.slice(0, Math.max(0, 3 - pendingMatches.length)).map((post) => (
                     <button
                       type="button"
-                      key={trip.id}
-                      onClick={() => navigate(`${APP_ROUTES.CARPOOL}/${trip.id}`)}
+                      key={post.id}
+                      onClick={() => navigate(`${APP_ROUTES.CARPOOL}/${post.id}`)}
                       className="surface-card flex w-full items-start gap-4 p-4 text-left"
                     >
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800">
@@ -203,11 +207,13 @@ function Dashboard() {
                       </span>
                       <span>
                         <span className="block font-semibold text-on-surface">
-                          {trip.departureCity} vers {trip.arrivalLabel}
+                          {post.departureCity} vers {post.arrivalLabel}
                         </span>
                         <span className="mt-1 block text-body-md text-on-surface-variant">
-                          {format(trip.departureDatetime, "d MMMM 'à' HH:mm", { locale: fr })}
-                          {` · ${trip.availableSeats} place${trip.availableSeats > 1 ? 's' : ''}`}
+                          {format(post.departureDatetime, "d MMMM 'à' HH:mm", { locale: fr })}
+                          {post.kind === 'offer'
+                            ? ` · ${post.availableSeats} place${post.availableSeats && post.availableSeats > 1 ? 's' : ''}`
+                            : ` · ${post.requestedSeats} place${post.requestedSeats && post.requestedSeats > 1 ? 's' : ''} recherchée${post.requestedSeats && post.requestedSeats > 1 ? 's' : ''}`}
                         </span>
                       </span>
                     </button>

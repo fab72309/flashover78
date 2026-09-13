@@ -15,7 +15,8 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useAuth } from '../contexts/AuthContext';
-import { listEvents, listMyTrips } from '../services/supabaseService';
+import { listEvents } from '../services/supabaseService';
+import { listMyCarpoolPosts } from '../services/carpoolMobilityService';
 import type { CalendarEvent } from '../types';
 
 type InterfaceMode = 'mobile' | 'desktop';
@@ -98,9 +99,9 @@ function Home() {
       setOverviewError(false);
 
       try {
-        const [events, myTrips] = await Promise.all([
+        const [events, myPosts] = await Promise.all([
           listEvents(),
-          listMyTrips(user.id),
+          listMyCarpoolPosts(user.id),
         ]);
         const now = new Date();
         const horizon = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000);
@@ -108,9 +109,10 @@ function Home() {
           .filter((event) => event.date >= now && event.date <= horizon)
           .sort((first, second) => first.date.getTime() - second.date.getTime())
           .slice(0, 3);
-        const pendingRequests = myTrips
-          .flatMap((trip) => trip.requests)
-          .filter((request) => request.status === 'pending').length;
+        const pendingRequests = new Map(
+          myPosts
+            .flatMap((post) => post.matches.filter((match) => match.status === 'pending').map((match) => [match.id, match]))
+        ).size;
 
         if (isMounted) {
           setUpcomingSessions(sessions);
@@ -385,8 +387,8 @@ function OperationalOverview({
             <CarFront size={18} />
           </span>
           <span>
-            <span className="block font-semibold text-on-surface">Demandes de co-voiturage</span>
-            <span className="block text-label-md text-on-surface-variant">En attente de votre réponse</span>
+            <span className="block font-semibold text-on-surface">Correspondances de co-voiturage</span>
+            <span className="block text-label-md text-on-surface-variant">En attente de votre validation</span>
           </span>
         </span>
         <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-primary px-2 text-sm font-bold text-white">
