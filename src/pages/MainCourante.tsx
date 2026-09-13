@@ -494,7 +494,12 @@ export default function MainCourante() {
       if (!pdfOpened) {
         openMainCourantePdf(document, filename);
       }
-      showToast('La main courante et son PDF ont été enregistrés.', 'success');
+      showToast(
+        result.deliveryStatus === 'sent'
+          ? 'La main courante a été enregistrée et envoyée par email.'
+          : 'La main courante a été enregistrée. Le PDF reste disponible pour un partage manuel.',
+        result.deliveryStatus === 'sent' ? 'success' : 'info',
+      );
     } catch (error) {
       console.error(error);
       previewWindow?.close();
@@ -708,7 +713,7 @@ export default function MainCourante() {
         <div className="surface-card flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between md:p-6">
           <div>
             <p className="text-body-md font-semibold text-on-surface">Vérifiez les réponses avant validation.</p>
-            <p className="mt-1 text-body-md text-on-surface-variant">La main courante sera enregistrée dans votre espace.</p>
+            <p className="mt-1 text-body-md text-on-surface-variant">La main courante sera enregistrée dans votre espace puis envoyée aux destinataires configurés.</p>
           </div>
           <button
             type="submit"
@@ -733,7 +738,9 @@ export default function MainCourante() {
             </div>
           </div>
           <p className="rounded-squircle-sm bg-surface-container px-4 py-3 text-body-md text-on-surface-variant">
-            Pour l’envoyer à {formatEmailRecipients(submissionRecipientEmails)}, utilisez le partage natif de l’appareil lorsque celui-ci permet de joindre le PDF. Sinon, le fichier est téléchargé et un message prérempli s’ouvre ; ajoutez le fichier avant l’envoi.
+            {submission.deliveryStatus === 'sent'
+              ? `Un email a été envoyé via Brevo à ${formatEmailRecipients(submissionRecipientEmails)}. Vous pouvez aussi repartager le PDF manuellement.`
+              : `L’envoi automatique vers ${formatEmailRecipients(submissionRecipientEmails)} n’a pas pu être confirmé. Le partage manuel reste disponible : le PDF peut être joint depuis la messagerie de votre appareil.`}
           </p>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <button
@@ -758,7 +765,7 @@ export default function MainCourante() {
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-squircle-sm border border-primary/30 px-4 py-2.5 text-body-md font-semibold text-primary transition hover:bg-primary/5"
             >
               {typeof navigator !== 'undefined' && typeof navigator.share === 'function' ? <Share2 size={18} /> : <Mail size={18} />}
-              Envoyer à {formatEmailRecipients(submissionRecipientEmails)}
+              Partager le PDF
             </button>
             <button
               type="button"

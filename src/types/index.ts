@@ -275,6 +275,8 @@ export interface MedicalFollowUpRecord extends MedicalFollowUpFormData {
   updatedAt: Date;
 }
 
+export type MainCouranteEmailStatus = 'pending' | 'sent' | 'failed';
+
 export type MainCouranteSite =
   | 'Montigny le Bretonneux'
   | 'Poissy'
@@ -334,6 +336,10 @@ export interface MainCouranteRecord extends MainCouranteFormData {
   pdfStoragePath: string;
   pdfFilename: string;
   pdfFileSize: number;
+  emailStatus: MainCouranteEmailStatus;
+  emailSentAt?: Date | null;
+  emailProviderId?: string | null;
+  emailError?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -1,4 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import {
+  describeBrevoFailure,
+  sanitizeEmailSubject,
+  sendBrevoEmail,
+} from '../_shared/brevo.ts'
 
 const DEFAULT_ADMIN_EMAILS = ['flashover78@gmail.com']
 const MAX_DOCUMENT_BASE64_LENGTH = 8_000_000
@@ -162,17 +167,6 @@ Deno.serve(async (request) => {
     return jsonResponse(200, { status: 'sent', alreadySent: true })
   }
 
-  const resendApiKey = Deno.env.get('RESEND_API_KEY')?.trim()
-  const fromEmail = Deno.env.get('RESEND_FROM_EMAIL')?.trim()
-  if (!resendApiKey || !fromEmail) {
-    const updateError = await updateEmailStatus(adminClient, submissionId, {
-      email_status: 'failed',
-      email_error: 'Service d’envoi email non configuré.',
-    })
-    if (updateError) return jsonResponse(500, { error: 'Impossible de mettre à jour le suivi.' })
-    return jsonResponse(503, { status: 'failed', error: 'Service d’envoi email non configuré.' })
-  }
-
   const recipientEmail = user.email?.trim().toLowerCase()
   if (!recipientEmail) {
     return jsonResponse(400, { error: 'Adresse email utilisateur introuvable.' })
@@ -181,7 +175,7 @@ Deno.serve(async (request) => {
   const configuredRecipients = await getConfiguredMedicalRecipients(adminClient)
   const recipients = Array.from(new Set([recipientEmail, ...configuredRecipients]))
   const displayName = `${submission.nom_formateur} ${submission.prenom_formateur}`.trim()
-  const subject = `${isEvolution ? 'Evolution Suivi médical' : 'Suivi médical formateur'} - ${displayName} - ${submission.date_formation}`
+  const subject = sanitizeEmailSubject(`${isEvolution ? 'Evolution Suivi médical' : 'Suivi médical formateur'} - ${displayName} - ${submission.date_formation}`)
   const text = [
     'Bonjour,',
     '',
@@ -201,53 +195,32 @@ Deno.serve(async (request) => {
     <p>Message envoyé automatiquement par Flashover 78.</p>
   `
 
-  let resendResponse: Response
-  try {
-    resendResponse = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        'Content-Type': 'application/json',
-        'Idempotency-Key': `medical-follow-up-${submissionId}-${isEvolution ? 'evolution' : 'initial'}`,
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: recipients,
-        subject,
-        text,
-        html,
-        attachments: [{
-          content: documentBase64,
-          filename,
-        }],
-      }),
-    })
-  } catch {
+  const delivery = await sendBrevoEmail({
+    to: recipients,
+    subject,
+    textContent: text,
+    htmlContent: html,
+    replyTo: recipientEmail,
+    attachment: {
+      content: documentBase64,
+      name: filename,
+    },
+  })
+
+  if (delivery.status !== 'sent') {
+    const deliveryError = describeBrevoFailure(delivery)
     const updateError = await updateEmailStatus(adminClient, submissionId, {
       email_status: 'failed',
-      email_error: 'Le fournisseur email est indisponible.',
+      email_error: deliveryError,
     })
     if (updateError) return jsonResponse(500, { error: 'Impossible de mettre à jour le suivi.' })
-    return jsonResponse(502, { status: 'failed', error: 'Le fournisseur email est indisponible.' })
-  }
-
-  if (!resendResponse.ok) {
-    const updateError = await updateEmailStatus(adminClient, submissionId, {
-      email_status: 'failed',
-      email_error: `Le fournisseur email a refusé l’envoi (${resendResponse.status}).`,
+    return jsonResponse(delivery.status === 'not_configured' ? 503 : 502, {
+      status: 'failed',
+      error: deliveryError,
     })
-    if (updateError) return jsonResponse(500, { error: 'Impossible de mettre à jour le suivi.' })
-    return jsonResponse(502, { status: 'failed', error: 'Le fournisseur email a refusé l’envoi.' })
   }
 
-  let providerId: string | null = null
-  try {
-    const responseBody = await resendResponse.json() as { id?: unknown }
-    providerId = typeof responseBody.id === 'string' ? responseBody.id : null
-  } catch {
-    providerId = null
-  }
-
+  const providerId = delivery.providerId
   const updateError = await updateEmailStatus(adminClient, submissionId, {
     email_status: 'sent',
     email_sent_at: new Date().toISOString(),

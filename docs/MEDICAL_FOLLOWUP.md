@@ -16,10 +16,13 @@ Depuis un environnement déjà lié au projet Supabase :
 
 ```sh
 supabase db push
-supabase secrets set RESEND_API_KEY=... RESEND_FROM_EMAIL='Flashover 78 <adresse@domaine-verifie.fr>'
+supabase secrets set BREVO_API_KEY=... BREVO_FROM_EMAIL='adresse-expediteur@domaine-verifie.fr' BREVO_SENDER_NAME='Flashover78'
 supabase functions deploy medical-follow-up-email
+supabase functions deploy main-courante-email
 ```
 
-`RESEND_FROM_EMAIL` doit utiliser une adresse ou un domaine validé chez Resend. Le destinataire administrateur `flashover78@gmail.com` est fixé dans la fonction Edge et le second destinataire est l’adresse email du compte authentifié.
+`BREVO_FROM_EMAIL` doit utiliser un expéditeur validé dans Brevo. Le paramètre `BREVO_API_KEY` est un secret serveur : il ne doit pas être préfixé par `VITE_` ni exposé dans le navigateur. La configuration SMTP Brevo enregistrée dans Supabase Auth reste utilisée pour les emails de connexion et de confirmation ; les deux fonctions utilisent l’API transactionnelle Brevo pour joindre les PDF.
 
-En développement avec `VITE_DEV_AUTH_BYPASS=true`, aucune donnée n’est envoyée vers Supabase et aucun email n’est expédié : la fiche et l’historique sont simulés localement. Si l’envoi serveur n’est pas disponible en production, le bouton de partage télécharge la fiche et prépare un message dans la messagerie de l’appareil avec les deux destinataires ; l’ajout de la pièce jointe reste une action explicite de l’utilisateur.
+Les destinataires supplémentaires sont configurables depuis la section administrateur « Utilisateurs ». L’adresse email du compte authentifié est toujours ajoutée au suivi médical, même si la liste administrateur est vide. La main courante est envoyée aux destinataires « Main courante » et, lorsqu’une réparation est renseignée, aux destinataires « Demande de réparation ».
+
+En développement avec `VITE_DEV_AUTH_BYPASS=true`, aucune donnée n’est envoyée vers Supabase et aucun email n’est expédié : la fiche et l’historique sont simulés localement. Si l’envoi serveur n’est pas disponible en production, le bouton de partage télécharge la fiche et prépare un message dans la messagerie de l’appareil avec l’utilisateur connecté et les destinataires configurés ; l’ajout de la pièce jointe reste une action explicite de l’utilisateur.

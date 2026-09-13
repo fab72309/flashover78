@@ -5,6 +5,7 @@ import {
   getFormEmailDestinations,
   getMainCourantePdfBlob,
   listMyMainCourantes,
+  sendMainCouranteEmail,
 } from '../services/supabaseService';
 import { useToast } from '../contexts/ToastContext';
 import type { MainCouranteRecord } from '../types';
@@ -21,6 +22,12 @@ import {
 } from '../utils/emailDestinations';
 
 type PdfAction = 'open' | 'download' | 'share';
+
+function getEmailLabel(record: MainCouranteRecord) {
+  if (record.emailStatus === 'sent') return 'Email envoyé';
+  if (record.emailStatus === 'failed') return 'Email à vérifier';
+  return 'Email en attente';
+}
 
 export default function MainCouranteHistoryPanel({ userId }: { userId: string }) {
   const [items, setItems] = useState<MainCouranteRecord[]>([]);
@@ -71,16 +78,33 @@ export default function MainCouranteHistoryPanel({ userId }: { userId: string })
     setActiveAction(actionKey);
 
     try {
-      const document = await getMainCourantePdfBlob(record);
-      if (action === 'open') {
-        if (previewWindow && !previewWindow.closed) {
-          openMainCourantePdf(document, record.pdfFilename, previewWindow);
-        } else {
-          openMainCourantePdf(document, record.pdfFilename);
+      if (action === 'share') {
+        const delivery = await sendMainCouranteEmail(record.id, true);
+        if (delivery.deliveryStatus === 'sent') {
+          setItems((currentItems) => currentItems.map((item) => item.id === record.id
+            ? {
+              ...item,
+              emailStatus: 'sent',
+              emailSentAt: new Date(),
+              emailProviderId: delivery.providerId,
+              emailError: null,
+            }
+            : item));
+          showToast('La main courante a été envoyée via Brevo.', 'success');
+          return;
         }
-      } else if (action === 'download') {
-        downloadMainCourantePdf(document, record.pdfFilename);
-      } else {
+
+        setItems((currentItems) => currentItems.map((item) => item.id === record.id
+          ? {
+            ...item,
+            emailStatus: 'failed',
+            emailSentAt: null,
+            emailProviderId: null,
+            emailError: delivery.deliveryError,
+          }
+          : item));
+
+        const document = await getMainCourantePdfBlob(record);
         const repairRecipientEmails = record.reparationsMateriel.trim()
           ? emailDestinations.demandeReparation
           : [];
@@ -92,10 +116,22 @@ export default function MainCouranteHistoryPanel({ userId }: { userId: string })
           repairRecipientEmails,
         );
         if (outcome === 'downloaded') {
-          showToast(`Le PDF a été téléchargé et un message pour ${formatEmailRecipients(recipientEmails)} a été préparé.`, 'info');
+          showToast(`L’envoi automatique n’a pas pu être confirmé. Le PDF a été téléchargé et un message pour ${formatEmailRecipients(recipientEmails)} a été préparé.`, 'info');
         } else {
-          showToast('Le PDF est prêt dans le partage de votre appareil.', 'info');
+          showToast('L’envoi automatique n’a pas pu être confirmé. Le PDF est prêt dans le partage de votre appareil.', 'info');
         }
+        return;
+      }
+
+      const document = await getMainCourantePdfBlob(record);
+      if (action === 'open') {
+        if (previewWindow && !previewWindow.closed) {
+          openMainCourantePdf(document, record.pdfFilename, previewWindow);
+        } else {
+          openMainCourantePdf(document, record.pdfFilename);
+        }
+      } else if (action === 'download') {
+        downloadMainCourantePdf(document, record.pdfFilename);
       }
     } catch (actionError) {
       if (actionError instanceof DOMException && actionError.name === 'AbortError') return;
@@ -154,9 +190,12 @@ export default function MainCouranteHistoryPanel({ userId }: { userId: string })
                 <p className="mt-1 text-body-md text-on-surface-variant">
                   {item.formateurs.filter(Boolean).join(', ') || 'Aucun formateur sélectionné'}
                 </p>
-                <span className="mt-2 inline-flex items-center gap-1.5 text-label-sm font-semibold text-primary">
-                  <Clock3 size={14} />
-                  Enregistrée le {item.createdAt.toLocaleDateString('fr-FR')} à {item.createdAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-label-sm font-semibold text-primary">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Clock3 size={14} />
+                    Enregistrée le {item.createdAt.toLocaleDateString('fr-FR')} à {item.createdAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <span>{getEmailLabel(item)}</span>
                 </span>
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
