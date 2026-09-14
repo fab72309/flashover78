@@ -16,6 +16,7 @@ export const TABLES = {
   TRAINING_AUDIT_LOG: 'training_audit_log',
   MEDICAL_FOLLOW_UPS: 'medical_follow_ups',
   MAIN_COURANTES: 'main_courantes',
+  EQUIPMENT_REPAIR_REQUESTS: 'equipment_repair_requests',
   EMAIL_DESTINATIONS: 'email_destinations',
 } as const;
 
@@ -24,6 +25,7 @@ export const STORAGE_BUCKETS = {
   LECTURES_DOCUMENTS: 'lectures-documents',
   BRULAGE_DOCUMENTS: 'brulage-documents',
   MAIN_COURANTES: 'main-courantes',
+  EQUIPMENT_REPAIR_REQUESTS: 'equipment-repair-requests',
   RESOURCES: 'resources',
 } as const;
 
@@ -123,6 +125,7 @@ export const APP_ROUTES = {
   CARPOOL: '/app/carpool',
   MEDICAL_FOLLOWUP: '/app/brulage/suivi-medical',
   MAIN_COURANTE: '/app/brulage/main-courante',
+  EQUIPMENT_REPAIR_REQUEST: '/app/brulage/demande-reparation',
 } as const;
 
 export const DEMO_PHONE_NUMBER = '06 00 00 00 00';

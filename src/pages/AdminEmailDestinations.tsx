@@ -35,7 +35,7 @@ const fieldDefinitions: Array<{
   {
     key: 'demandeReparation',
     label: 'Demande de réparation',
-    description: 'Utilisé lorsqu’une main courante contient une réparation ou un remplacement de matériel.',
+    description: 'Destinataires des demandes de réparation et des réparations signalées dans une main courante.',
     required: true,
   },
 ];

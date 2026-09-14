@@ -271,6 +271,58 @@ export interface CarpoolPost {
   matches: CarpoolMatch[];
 }
 
+export type EquipmentRepairRequestEmailStatus = 'pending' | 'sent' | 'failed';
+export type EquipmentRepairRequestLocation =
+  | 'Montigny le Bretonneux'
+  | 'Poissy'
+  | 'Feu réel'
+  | 'Autre :';
+export type EquipmentRepairRequestKind = 'Matériel' | 'Habillement';
+export type EquipmentRepairRequestMaterial =
+  | 'ARI'
+  | 'PIECE FACIALE'
+  | 'VENTILATEUR'
+  | 'RIDEAU STOP TIRAGE'
+  | 'LANCE'
+  | 'TUYAUX'
+  | 'POMPE ELECTRIQUE'
+  | 'Autre :';
+export type EquipmentRepairRequestClothing =
+  | 'VESTE DE FEU'
+  | 'SURPANTALON'
+  | 'SVI HAUT'
+  | 'SVI BAS'
+  | 'CASQUE F1'
+  | 'GANTS DE FEU'
+  | 'Autre :';
+
+export interface EquipmentRepairRequestFormData {
+  lieuFormation: EquipmentRepairRequestLocation | '';
+  lieuFormationAutre: string;
+  dateDemande: string;
+  emailDemandeur: string;
+  demandeConcerne: EquipmentRepairRequestKind | '';
+  equipement: EquipmentRepairRequestMaterial | EquipmentRepairRequestClothing | '';
+  equipementAutre: string;
+  numeroInventaire: string;
+  probleme: string;
+  nomDemandeur: string;
+}
+
+export interface EquipmentRepairRequestRecord extends EquipmentRepairRequestFormData {
+  id: string;
+  userId: string;
+  pdfStoragePath: string;
+  pdfFilename: string;
+  pdfFileSize: number;
+  emailStatus: EquipmentRepairRequestEmailStatus;
+  emailSentAt?: Date | null;
+  emailProviderId?: string | null;
+  emailError?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export type MedicalFollowUpDay = 'Journée complète' | 'Matin' | 'Après-Midi';
 export type MedicalFollowUpWeather = 'Pluie' | 'Soleil' | 'Couvert' | 'Neige';
 export type MedicalFollowUpHydration = '0 l' | '0,5 l' | '1 l' | '1,5 l' | '2 l' | '2,5 l';
