@@ -32,6 +32,11 @@ import type {
   TrainingRegistrationStatus,
   TrainingSessionSummary,
   ManagedUser,
+  EquipmentRepairRequestEmailStatus,
+  EquipmentRepairRequestFormData,
+  EquipmentRepairRequestKind,
+  EquipmentRepairRequestLocation,
+  EquipmentRepairRequestRecord,
   MedicalFollowUpEmailStatus,
   MedicalFollowUpFormData,
   MedicalFollowUpRecord,
@@ -242,6 +247,30 @@ type MainCouranteRow = {
   updated_at: string;
 };
 
+type EquipmentRepairRequestRow = {
+  id: string;
+  user_id: string;
+  pdf_storage_path: string;
+  pdf_filename: string;
+  pdf_file_size: number;
+  lieu_formation: EquipmentRepairRequestLocation | null;
+  lieu_formation_autre: string | null;
+  date_demande: string | null;
+  email_demandeur: string;
+  demande_concerne: EquipmentRepairRequestKind;
+  equipement: string;
+  equipement_autre: string | null;
+  numero_inventaire: string | null;
+  probleme: string;
+  nom_demandeur: string;
+  email_status: EquipmentRepairRequestEmailStatus;
+  email_sent_at: string | null;
+  email_provider_id: string | null;
+  email_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type CarpoolTripRow = {
   id: string;
   event_id: string | null;
@@ -414,6 +443,8 @@ let mockTrainingRegistrations: TrainingRegistration[] = [
 let mockMedicalFollowUps: MedicalFollowUpRecord[] = [];
 let mockMainCourantes: MainCouranteRecord[] = [];
 const mockMainCourantePdfs = new Map<string, Blob>();
+let mockEquipmentRepairRequests: EquipmentRepairRequestRecord[] = [];
+const mockEquipmentRepairRequestPdfs = new Map<string, Blob>();
 
 let mockManagedUsers: ManagedUser[] = [
   {
@@ -638,6 +669,32 @@ function mapMainCourante(row: MainCouranteRow): MainCouranteRecord {
     chariotFoyerDemarrage: row.chariot_foyer_demarrage ?? [],
     observationsDifficultes: row.observations_difficultes ?? '',
     reparationsMateriel: row.reparations_materiel ?? '',
+    emailStatus: row.email_status,
+    emailSentAt: row.email_sent_at ? new Date(row.email_sent_at) : null,
+    emailProviderId: row.email_provider_id,
+    emailError: row.email_error,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+}
+
+function mapEquipmentRepairRequest(row: EquipmentRepairRequestRow): EquipmentRepairRequestRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    pdfStoragePath: row.pdf_storage_path,
+    pdfFilename: row.pdf_filename,
+    pdfFileSize: row.pdf_file_size,
+    lieuFormation: row.lieu_formation ?? '',
+    lieuFormationAutre: row.lieu_formation_autre ?? '',
+    dateDemande: row.date_demande ?? '',
+    emailDemandeur: row.email_demandeur,
+    demandeConcerne: row.demande_concerne,
+    equipement: row.equipement as EquipmentRepairRequestRecord['equipement'],
+    equipementAutre: row.equipement_autre ?? '',
+    numeroInventaire: row.numero_inventaire ?? '',
+    probleme: row.probleme,
+    nomDemandeur: row.nom_demandeur,
     emailStatus: row.email_status,
     emailSentAt: row.email_sent_at ? new Date(row.email_sent_at) : null,
     emailProviderId: row.email_provider_id,
@@ -1436,6 +1493,253 @@ export async function getMainCourantePdfBlob(record: MainCouranteRecord) {
   assertSupabaseConfigured();
   const { data, error } = await supabase.storage
     .from(STORAGE_BUCKETS.MAIN_COURANTES)
+    .download(record.pdfStoragePath);
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+function normalizeEquipmentRepairRequestFilename(filename: string) {
+  const normalized = filename
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  return normalized.toLowerCase().endsWith('.pdf')
+    ? normalized
+    : `${normalized || 'demande-reparation'}.pdf`;
+}
+
+function getEquipmentRepairRequestPayload(
+  input: EquipmentRepairRequestFormData,
+  userId: string,
+  id: string,
+  pdfStoragePath: string,
+  pdfFilename: string,
+  pdfFileSize: number,
+) {
+  return {
+    id,
+    user_id: userId,
+    pdf_storage_path: pdfStoragePath,
+    pdf_filename: pdfFilename,
+    pdf_file_size: pdfFileSize,
+    lieu_formation: input.lieuFormation || null,
+    lieu_formation_autre: input.lieuFormation === 'Autre :'
+      ? input.lieuFormationAutre.trim() || null
+      : null,
+    date_demande: input.dateDemande || null,
+    email_demandeur: input.emailDemandeur.trim().toLowerCase(),
+    demande_concerne: input.demandeConcerne,
+    equipement: input.equipement,
+    equipement_autre: input.equipement === 'Autre :'
+      ? input.equipementAutre.trim() || null
+      : null,
+    numero_inventaire: input.numeroInventaire.trim() || null,
+    probleme: input.probleme.trim(),
+    nom_demandeur: input.nomDemandeur.trim(),
+  };
+}
+
+export type EquipmentRepairRequestDeliveryStatus = EquipmentRepairRequestEmailStatus | 'not_configured';
+
+export interface EquipmentRepairRequestSubmissionResult {
+  record: EquipmentRepairRequestRecord;
+  document: Blob;
+  filename: string;
+  deliveryStatus: EquipmentRepairRequestDeliveryStatus;
+  deliveryError: string | null;
+}
+
+export interface EquipmentRepairRequestDeliveryResult {
+  deliveryStatus: EquipmentRepairRequestDeliveryStatus;
+  deliveryError: string | null;
+  providerId: string | null;
+}
+
+function getEquipmentRepairRequestDeliveryError() {
+  return 'La demande est enregistrée, mais son envoi automatique n’a pas pu être confirmé.';
+}
+
+export async function sendEquipmentRepairRequestEmail(
+  submissionId: string,
+  forceResend = false,
+): Promise<EquipmentRepairRequestDeliveryResult> {
+  if (isDevAuthBypassEnabled) {
+    return {
+      deliveryStatus: 'not_configured',
+      deliveryError: 'Mode de démonstration : aucun email n’est envoyé.',
+      providerId: null,
+    };
+  }
+
+  assertSupabaseConfigured();
+
+  try {
+    const { data, error } = await supabase.functions.invoke('equipment-repair-email', {
+      body: { submissionId, forceResend },
+    });
+
+    if (error || data?.status !== 'sent') {
+      console.error('Equipment repair email delivery failed', error ?? data);
+      return {
+        deliveryStatus: 'failed',
+        deliveryError: getEquipmentRepairRequestDeliveryError(),
+        providerId: null,
+      };
+    }
+
+    return {
+      deliveryStatus: 'sent',
+      deliveryError: null,
+      providerId: typeof data.providerId === 'string' ? data.providerId : null,
+    };
+  } catch (error) {
+    console.error('Equipment repair email delivery failed', error);
+    return {
+      deliveryStatus: 'failed',
+      deliveryError: getEquipmentRepairRequestDeliveryError(),
+      providerId: null,
+    };
+  }
+}
+
+export async function createEquipmentRepairRequest(
+  input: EquipmentRepairRequestFormData,
+  document: Blob,
+  filename: string,
+): Promise<EquipmentRepairRequestSubmissionResult> {
+  const safeFilename = normalizeEquipmentRepairRequestFilename(filename);
+
+  if (isDevAuthBypassEnabled) {
+    const now = new Date();
+    const id = createPreviewId('preview-equipment-repair');
+    const pdfStoragePath = `${devUser.id}/${id}/${safeFilename}`;
+    const record: EquipmentRepairRequestRecord = {
+      ...input,
+      id,
+      userId: devUser.id,
+      pdfStoragePath,
+      pdfFilename: safeFilename,
+      pdfFileSize: document.size,
+      emailStatus: 'failed',
+      emailSentAt: null,
+      emailProviderId: null,
+      emailError: 'Mode de démonstration : aucun email n’est envoyé.',
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockEquipmentRepairRequests = [record, ...mockEquipmentRepairRequests];
+    mockEquipmentRepairRequestPdfs.set(id, document);
+    return {
+      record,
+      document,
+      filename: safeFilename,
+      deliveryStatus: 'not_configured',
+      deliveryError: record.emailError ?? null,
+    };
+  }
+
+  assertSupabaseConfigured();
+  const currentUser = await getCurrentUser();
+  if (!currentUser) {
+    throw new Error('Authentification requise pour enregistrer une demande de réparation.');
+  }
+
+  const id = createUuid();
+  const pdfStoragePath = `${currentUser.id}/${id}/${safeFilename}`;
+
+  try {
+    await uploadPrivateFile(
+      STORAGE_BUCKETS.EQUIPMENT_REPAIR_REQUESTS,
+      pdfStoragePath,
+      document,
+      { upsert: false },
+    );
+
+    const { data, error } = await supabase
+      .from(TABLES.EQUIPMENT_REPAIR_REQUESTS)
+      .insert(getEquipmentRepairRequestPayload(
+        input,
+        currentUser.id,
+        id,
+        pdfStoragePath,
+        safeFilename,
+        document.size,
+      ))
+      .select('*')
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    const initialRecord = mapEquipmentRepairRequest(data as EquipmentRepairRequestRow);
+    const delivery = await sendEquipmentRepairRequestEmail(initialRecord.id);
+    const record: EquipmentRepairRequestRecord = {
+      ...initialRecord,
+      emailStatus: delivery.deliveryStatus === 'sent' ? 'sent' : 'failed',
+      emailSentAt: delivery.deliveryStatus === 'sent' ? new Date() : null,
+      emailProviderId: delivery.providerId,
+      emailError: delivery.deliveryError,
+    };
+
+    return {
+      record,
+      document,
+      filename: safeFilename,
+      deliveryStatus: delivery.deliveryStatus,
+      deliveryError: delivery.deliveryError,
+    };
+  } catch (error) {
+    try {
+      await removeUploadedFile(STORAGE_BUCKETS.EQUIPMENT_REPAIR_REQUESTS, pdfStoragePath);
+    } catch (cleanupError) {
+      console.error('Equipment repair request PDF cleanup failed', cleanupError);
+    }
+    throw error;
+  }
+}
+
+export async function listMyEquipmentRepairRequests(userId: string) {
+  if (isDevAuthBypassEnabled) {
+    return mockEquipmentRepairRequests
+      .filter((record) => record.userId === userId)
+      .sort((first, second) => second.createdAt.getTime() - first.createdAt.getTime());
+  }
+
+  assertSupabaseConfigured();
+  const { data, error } = await supabase
+    .from(TABLES.EQUIPMENT_REPAIR_REQUESTS)
+    .select('*')
+    .eq('user_id', userId)
+    .order('date_demande', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as EquipmentRepairRequestRow[]).map(mapEquipmentRepairRequest);
+}
+
+export async function getEquipmentRepairRequestPdfBlob(record: EquipmentRepairRequestRecord) {
+  if (isDevAuthBypassEnabled) {
+    const document = mockEquipmentRepairRequestPdfs.get(record.id);
+    if (!document) {
+      throw new Error('Le PDF de cette demande est indisponible dans le mode de démonstration.');
+    }
+    return document;
+  }
+
+  assertSupabaseConfigured();
+  const { data, error } = await supabase.storage
+    .from(STORAGE_BUCKETS.EQUIPMENT_REPAIR_REQUESTS)
     .download(record.pdfStoragePath);
 
   if (error) {

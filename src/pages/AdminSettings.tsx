@@ -20,7 +20,7 @@ const adminShortcuts = [
   {
     to: APP_ROUTES.ADMIN_EMAIL_DESTINATIONS,
     title: 'Destinataires des formulaires',
-    description: 'Choisissez les adresses utilisées pour les envois de la main courante et du suivi médical.',
+    description: 'Choisissez les adresses utilisées pour les envois de la main courante, du suivi médical et des demandes de réparation.',
     action: 'Gérer les destinataires',
     icon: Mail,
   },
