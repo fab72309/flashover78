@@ -1,3 +1,4 @@
+import { escapeHtml } from '../_shared/html.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import {
   describeBrevoFailure,
@@ -42,14 +43,6 @@ function getConfiguredKey(legacyName: string, namedKeysName: string) {
   }
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
 
 function normalizeFilename(value: unknown) {
   const candidate = String(value ?? '').trim()

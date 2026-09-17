@@ -117,6 +117,7 @@ export const APP_ROUTES = {
   RESOURCE_DETAIL: '/app/resources/document',
   DASHBOARD: '/app/dashboard',
   SETTINGS: '/app/settings',
+  ADMIN_SECURITY_LOG: '/app/settings/admin/security',
   ADMIN_SETTINGS: '/app/settings/admin',
   ADMIN_USERS: '/app/settings/admin/users',
   ADMIN_EMAIL_DESTINATIONS: '/app/settings/admin/destinations',

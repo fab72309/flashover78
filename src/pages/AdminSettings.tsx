@@ -11,6 +11,13 @@ import { APP_ROUTES } from '../utils/constants';
 
 const adminShortcuts = [
   {
+    to: APP_ROUTES.ADMIN_SECURITY_LOG,
+    title: 'Journal de sécurité',
+    description: 'Consultez les connexions, les événements TOTP et leurs adresses IP disponibles.',
+    action: 'Consulter le journal',
+    icon: ShieldCheck,
+  },
+  {
     to: APP_ROUTES.ADMIN_USERS,
     title: 'Utilisateurs',
     description: 'Invitez des personnes et ajustez leurs rôles et fonctions formateur.',
