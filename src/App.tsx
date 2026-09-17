@@ -27,6 +27,7 @@ const AddResource = lazy(() => import('./pages/AddResource'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Account = lazy(() => import('./pages/Account'));
+const AdminSecurityLog = lazy(() => import('./pages/AdminSecurityLog'));
 const AdminSettings = lazy(() => import('./pages/AdminSettings'));
 const AdminUsers = lazy(() => import('./pages/AdminUsers'));
 const AdminEmailDestinations = lazy(() => import('./pages/AdminEmailDestinations'));
@@ -137,6 +138,9 @@ function App() {
                       </ProtectedRoute>
                     )}
                   />
+                  <Route path="settings/admin/security" element={(
+                    <ProtectedRoute requiredRole="admin"><AdminSecurityLog /></ProtectedRoute>
+                  )} />
                   <Route path="settings/users" element={<Navigate to={APP_ROUTES.ADMIN_USERS} replace />} />
                   <Route path="account" element={<Account />} />
                   <Route path="carpool" element={<Carpool />} />

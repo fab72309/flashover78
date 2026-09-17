@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -88,6 +88,10 @@ Deno.serve(async (request) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  if (request.method !== 'POST') {
+    return jsonResponse(405, { error: 'Méthode non autorisée.' })
+  }
+
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
   const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -121,8 +125,15 @@ Deno.serve(async (request) => {
     return jsonResponse(500, { error: profileError.message })
   }
 
-  if (profile?.role !== 'admin' && !profile?.is_admin) {
+  if (profile?.role !== 'admin') {
     return jsonResponse(403, { error: 'Action réservée aux administrateurs.' })
+  }
+
+  // The database checks the signed JWT, its TOTP method and a live verified factor.
+  // Do this before creating a service-role client: it bypasses RLS.
+  const { data: hasMfa, error: mfaError } = await userClient.rpc('has_admin_mfa')
+  if (mfaError || hasMfa !== true) {
+    return jsonResponse(403, { error: 'Validation TOTP requise.', code: 'mfa_required' })
   }
 
   const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey, {

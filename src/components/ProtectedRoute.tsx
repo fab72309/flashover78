@@ -3,6 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from './LoadingSpinner';
 import { APP_ROUTES } from '../utils/constants';
 import { hasRole } from '../utils/permissions';
+import AdminMfaGate from './AdminMfaGate';
+import { isDevAuthBypassEnabled } from '../utils/devAuth';
 import type { AppRole } from '../types';
 
 interface ProtectedRouteProps {
@@ -29,6 +31,10 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
 
   if (requiredRole && !hasRole(user, requiredRole)) {
     return <Navigate to={APP_ROUTES.SETTINGS} replace />;
+  }
+
+  if (user.role === 'admin' && !isDevAuthBypassEnabled) {
+    return <AdminMfaGate>{children}</AdminMfaGate>;
   }
 
   return <>{children}</>;
