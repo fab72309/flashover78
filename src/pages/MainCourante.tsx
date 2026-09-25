@@ -46,6 +46,8 @@ import {
 } from '../utils/emailDestinations';
 import { renderMainCourantePdf } from '../utils/mainCourantePdf';
 import SearchableFormateurSelect from '../components/SearchableFormateurSelect';
+import { getUserFacingError } from '../utils/userFacingError';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 const inputClasses =
   'w-full rounded-squircle-sm border border-outline-variant/70 bg-surface-container-lowest px-4 py-3 text-body-lg text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20';
@@ -479,9 +481,10 @@ export default function MainCourante() {
           setProfiles(nextProfiles);
         }
       } catch (error) {
-        const message = error instanceof Error
-          ? error.message
-          : 'Impossible de charger la liste des utilisateurs enregistrés.';
+        const message = getUserFacingError(
+          error,
+          'Impossible de charger la liste des utilisateurs enregistrés.',
+        );
         if (isMounted) {
           setProfilesError(message);
           showToast(message, 'error');
@@ -600,7 +603,9 @@ export default function MainCourante() {
       return;
     }
 
-    const previewWindow = typeof window !== 'undefined' ? window.open('', '_blank') : null;
+    const previewWindow = typeof window !== 'undefined'
+      ? window.open('', '_blank', 'noopener,noreferrer')
+      : null;
     setSubmitting(true);
     let pdfOpened = false;
     try {
@@ -621,10 +626,10 @@ export default function MainCourante() {
         result.deliveryStatus === 'sent' ? 'success' : 'info',
       );
     } catch (error) {
-      console.error(error);
+      logClientFailure('Génération du PDF de main courante impossible');
       previewWindow?.close();
       showToast(
-        error instanceof Error ? error.message : 'Impossible de générer et d’enregistrer la main courante.',
+        getUserFacingError(error, 'Impossible de générer et d’enregistrer la main courante.'),
         'error',
       );
     } finally {

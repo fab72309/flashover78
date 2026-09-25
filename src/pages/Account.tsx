@@ -9,6 +9,7 @@ import TrainingHistoryPanel from '../components/TrainingHistoryPanel';
 import MedicalFollowUpHistoryPanel from '../components/MedicalFollowUpHistoryPanel';
 import MainCouranteHistoryPanel from '../components/MainCouranteHistoryPanel';
 import EquipmentRepairHistoryPanel from '../components/EquipmentRepairHistoryPanel';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 export default function Account() {
   const { user, logout } = useAuth();
@@ -19,8 +20,8 @@ export default function Account() {
     try {
       await logout();
       navigate(APP_ROUTES.LOGIN);
-    } catch (error) {
-      console.error('Erreur lors de la déconnexion:', error);
+    } catch {
+      logClientFailure('Déconnexion impossible');
       showToast('Une erreur est survenue lors de la déconnexion. Veuillez réessayer.', 'error');
     }
   };

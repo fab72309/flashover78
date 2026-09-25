@@ -8,6 +8,7 @@ import { APP_ROUTES, TRAINER_LEVEL_LABELS, TRAINER_LEVELS } from './constants';
 import {
   DEFAULT_FORM_EMAIL_DESTINATIONS,
   mergeEmailRecipients,
+  toMailtoRecipientList,
 } from './emailDestinations';
 
 export const MEDICAL_FOLLOWUP_TEMPLATE_PATH = '/templates/suivi-medical-formateur.pdf';
@@ -255,7 +256,7 @@ export async function shareMedicalFollowUp(
   }
 
   downloadMedicalFollowUp(documentBlob, filename);
-  const recipientList = recipients.join(',');
+  const recipientList = toMailtoRecipientList(recipients);
   const subject = encodeURIComponent('Suivi médical formateur');
   const body = encodeURIComponent(
     'La fiche a été téléchargée. Ajoutez le fichier en pièce jointe avant d’envoyer ce message.',
@@ -273,7 +274,7 @@ export function openMedicalFollowUpPdf(
   const openedWindow = targetWindow && !targetWindow.closed
     ? targetWindow
     : targetWindow === undefined
-      ? window.open('', '_blank')
+      ? window.open('', '_blank', 'noopener,noreferrer')
       : null;
 
   if (!openedWindow) {

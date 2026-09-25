@@ -6,12 +6,15 @@ const trainerLevelRank = new Map<TrainerLevel, number>(
 );
 
 export function normalizeTrainerLevels(value: unknown): TrainerLevel[] {
-  const candidates = Array.isArray(value) ? value : ['RSFR'];
+  // Trainer functions are administrative qualifications, not a default role.
+  // A newly created or incomplete profile must therefore remain unqualified
+  // until an administrator explicitly assigns one or more levels.
+  const candidates = Array.isArray(value) ? value : [];
   const normalized = TRAINER_LEVELS.filter((level) =>
     candidates.some((candidate) => String(candidate).trim().toUpperCase() === level)
   );
 
-  return normalized.length > 0 ? normalized : ['RSFR'];
+  return normalized;
 }
 
 export function sortTrainerAssignments(

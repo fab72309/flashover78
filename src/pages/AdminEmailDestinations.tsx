@@ -14,6 +14,7 @@ import {
   type FormEmailDestinationKey,
   type FormEmailDestinations,
 } from '../utils/emailDestinations';
+import { getUserFacingError } from '../utils/userFacingError';
 
 const fieldDefinitions: Array<{
   key: FormEmailDestinationKey;
@@ -61,7 +62,7 @@ export default function AdminEmailDestinations() {
       setDestinations(await listFormEmailDestinations());
     } catch (error) {
       showToast(
-        error instanceof Error ? error.message : 'Impossible de charger les destinataires.',
+        getUserFacingError(error, 'Impossible de charger les destinataires.'),
         'error',
       );
     } finally {
@@ -114,7 +115,7 @@ export default function AdminEmailDestinations() {
       showToast('Destinataires des formulaires mis à jour.', 'success');
     } catch (error) {
       showToast(
-        error instanceof Error ? error.message : 'Impossible d’enregistrer les destinataires.',
+        getUserFacingError(error, 'Impossible d’enregistrer les destinataires.'),
         'error',
       );
     } finally {

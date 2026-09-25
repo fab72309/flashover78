@@ -47,8 +47,35 @@ import type {
 } from '../types';
 import { devUser, isDevAuthBypassEnabled } from '../utils/devAuth';
 import { getDocumentExpirationState } from '../utils/documents';
-import { getPasswordRecoveryRedirectUrl } from '../utils/authRecovery';
+import {
+  getEmailConfirmationRedirectUrl,
+  getPasswordRecoveryRedirectUrl,
+} from '../utils/authRecovery';
+import { normalizeAuthError } from '../utils/authErrors';
 import { normalizeTrainerLevels } from '../utils/trainerLevels';
+import {
+  assertExpectedDocumentSignature,
+  expectedDocumentMimeType,
+  isUploadableDocumentExtension,
+} from '../utils/fileSignatures';
+import {
+  clearOfflineDocumentData,
+  clearOfflineDocumentTimestamp,
+  decryptOfflineResponse,
+  enforceOfflineDocumentOwner,
+  encryptOfflineResponse,
+  getOfflineDocumentEncryptionKey,
+  isRemoteOfflineSessionValid,
+  markOfflineDocumentCached,
+  OFFLINE_DOCUMENT_CACHE,
+  OFFLINE_DOCUMENT_METADATA_STORE,
+  isOfflineDocumentOwner,
+  purgeExpiredOfflineDocumentData,
+  readEncryptedOfflineStore,
+  shouldRevalidateOfflineSession,
+  writeEncryptedOfflineStore,
+} from '../utils/offlineDocuments';
+export { clearOfflineDocumentData, enforceOfflineDocumentOwner } from '../utils/offlineDocuments';
 import {
   createDefaultFormEmailDestinations,
   FORM_EMAIL_DESTINATION_DB_KEYS,
@@ -56,6 +83,7 @@ import {
   validateFormEmailDestinations,
   type FormEmailDestinations,
 } from '../utils/emailDestinations';
+import { fetchAllPages, QUERY_MAX_ROWS } from '../utils/paginate';
 
 type EventRow = {
   id: string;
@@ -289,8 +317,18 @@ type CarpoolTripRow = {
   created_at: string;
 };
 
+type CarpoolRequestRow = {
+  id: string;
+  trip_id: string;
+  requester_id: string;
+  seats_requested: number;
+  message: string | null;
+  status: string;
+  created_at: string;
+};
+
 const MAX_DOCUMENT_SIZE = 20 * 1024 * 1024;
-const ALLOWED_DOCUMENT_EXTENSIONS = new Set(['pdf', 'odt', 'doc', 'docx', 'ppt', 'pptx', 'txt']);
+const ALLOWED_DOCUMENT_EXTENSIONS = new Set(['pdf', 'odt', 'docx', 'pptx', 'txt']);
 const mockNow = new Date();
 const mockEventDate = new Date(mockNow.getTime() + 3 * 24 * 60 * 60 * 1000);
 
@@ -716,7 +754,7 @@ function deriveAppUser(user: SupabaseUser, profile?: Profile | null): AppUser {
       user.email?.split('@')[0] ||
       'Utilisateur',
     role: profile?.role ?? 'member',
-    trainerLevels: profile?.trainerLevels ?? ['RSFR'],
+    trainerLevels: profile?.trainerLevels ?? [],
     isAdmin: profile?.role === 'admin',
     firstName: profile?.firstName ?? metadata.first_name,
     lastName: profile?.lastName ?? metadata.last_name,
@@ -730,25 +768,96 @@ async function uploadPrivateFile(
   bucket: string,
   path: string,
   file: Blob,
-  options: { upsert?: boolean } = {},
 ) {
   if (isDevAuthBypassEnabled) {
-    return path;
+    return { storagePath: path, fileSize: file.size };
   }
 
   assertSupabaseConfigured();
+  const extension = path.split('.').pop()?.toLowerCase() ?? '';
+  await assertExpectedDocumentSignature(file, extension);
+  const contentType = expectedDocumentMimeType(extension);
 
-  const { error } = await supabase.storage.from(bucket).upload(path, file, {
-    cacheControl: '3600',
-    contentType: file.type || 'application/octet-stream',
-    upsert: options.upsert ?? true,
+  const { data, error } = await supabase.functions.invoke('store-document', {
+    body: {
+      bucketId: bucket,
+      storagePath: path,
+      documentBase64: await encodeBlobToBase64(file),
+    },
   });
 
-  if (error) {
-    throw error;
+  if (
+    error
+    || !data
+    || data.bucketId !== bucket
+    || data.storagePath !== path
+    || data.mimeType !== contentType
+    || typeof data.fileSize !== 'number'
+    || !Number.isInteger(data.fileSize)
+    || data.fileSize < 1
+    || data.fileSize > MAX_DOCUMENT_SIZE
+  ) {
+    console.error('Document finalization failed');
+    throw new Error('Le document n’a pas pu être enregistré de manière sécurisée.');
   }
 
-  return path;
+  return { storagePath: path, fileSize: data.fileSize };
+}
+
+type FormPdfKey = 'main_courante' | 'demande_reparation';
+
+async function uploadFormPdfThroughFinalizer(
+  formKey: FormPdfKey,
+  userId: string,
+  submissionId: string,
+  filename: string,
+  document: Blob,
+) {
+  if (isDevAuthBypassEnabled) {
+    return {
+      storagePath: `${userId}/${submissionId}/${filename}`,
+      fileSize: document.size,
+    };
+  }
+
+  assertSupabaseConfigured();
+  if (document.size < 1 || document.size > 5 * 1024 * 1024) {
+    throw new Error('Le PDF doit mesurer au maximum 5 Mo.');
+  }
+  await assertExpectedDocumentSignature(document, 'pdf');
+
+  const { data, error } = await supabase.functions.invoke('store-form-pdf', {
+    body: {
+      formKey,
+      submissionId,
+      filename,
+      documentBase64: await encodeBlobToBase64(document),
+    },
+  });
+
+  const expectedBucket = formKey === 'main_courante'
+    ? STORAGE_BUCKETS.MAIN_COURANTES
+    : STORAGE_BUCKETS.EQUIPMENT_REPAIR_REQUESTS;
+  const expectedPath = `${userId}/${submissionId}/${filename}`;
+  if (
+    error
+    || !data
+    || data.bucketId !== expectedBucket
+    || data.storagePath !== expectedPath
+    || data.filename !== filename
+    || typeof data.fileSize !== 'number'
+    || !Number.isInteger(data.fileSize)
+    || data.fileSize < 1
+    || data.fileSize > 5 * 1024 * 1024
+  ) {
+    console.error('Form PDF finalization failed');
+    throw new Error('Le PDF n’a pas pu être enregistré de manière sécurisée.');
+  }
+
+  return {
+    storagePath: expectedPath,
+    fileSize: data.fileSize,
+  };
 }
 
 async function ensureCurrentUserCanContribute() {
@@ -824,6 +933,24 @@ export async function resolveAppUser(user: SupabaseUser | null) {
   return deriveAppUser(user, profile);
 }
 
+/**
+ * Offline fallback: never derives a privileged role from stale metadata. The
+ * local session may keep access to explicitly cached documents, but all admin
+ * and contributor capabilities remain unavailable until the profile is
+ * revalidated online.
+ */
+export function resolveOfflineAppUser(user: SupabaseUser | null): AppUser | null {
+  if (!user) return null;
+
+  // A profile outage must fail closed for qualifications as well as roles.
+  // The historical RSFR default is reserved for an explicit profile
+  // provisioned by the server and must never be inferred from an Auth user.
+  return {
+    ...deriveAppUser(user, null),
+    trainerLevels: [],
+  };
+}
+
 export interface SignUpResult {
   user: SupabaseUser | null;
   session: Session | null;
@@ -844,7 +971,9 @@ export async function signUp(email: string, password: string, firstName: string,
         display_name: `${firstName} ${lastName}`.trim(),
       },
       emailRedirectTo:
-        typeof window !== 'undefined' ? `${window.location.origin}${APP_ROUTES.LOGIN}` : undefined,
+        typeof window !== 'undefined'
+          ? getEmailConfirmationRedirectUrl(window.location.origin)
+          : undefined,
     },
   });
 
@@ -883,6 +1012,10 @@ export async function signIn(email: string, password: string, rememberSession = 
 export async function signOut() {
   assertSupabaseConfigured();
   const { error } = await supabase.auth.signOut();
+  // Clear private local data even when the remote session endpoint is
+  // unavailable. A failed network logout must not leave cached documents
+  // readable from the current browser profile.
+  await clearOfflineDocumentData();
   if (error) {
     throw error;
   }
@@ -933,11 +1066,13 @@ export async function updatePasswordFromRecovery(password: string) {
   if (signOutError) {
     await supabase.auth.signOut({ scope: 'local' });
   }
+  await clearOfflineDocumentData();
 }
 
 export async function cancelPasswordRecovery() {
   assertSupabaseConfigured();
   const { error } = await supabase.auth.signOut({ scope: 'local' });
+  await clearOfflineDocumentData();
   if (error) {
     throw normalizeAuthError(error.message);
   }
@@ -1004,8 +1139,6 @@ function getMedicalFollowUpPayload(input: MedicalFollowUpFormData, userId: strin
 
 async function sendMedicalFollowUpEmail(
   record: MedicalFollowUpRecord,
-  document: Blob,
-  filename: string,
   isEvolution: boolean,
 ) {
   let deliveryStatus: MedicalFollowUpDeliveryStatus = 'pending';
@@ -1017,22 +1150,20 @@ async function sendMedicalFollowUpEmail(
       {
         body: {
           submissionId: record.id,
-          documentBase64: await encodeBlobToBase64(document),
-          filename,
           isEvolution,
         },
       },
     );
 
     if (deliveryInvokeError || delivery?.status !== 'sent') {
-      console.error('Medical follow-up email delivery failed', deliveryInvokeError ?? delivery);
+      console.error('Medical follow-up email delivery failed');
       deliveryStatus = 'failed';
       deliveryError = getMedicalFollowUpDeliveryError();
     } else {
       deliveryStatus = 'sent';
     }
-  } catch (error) {
-    console.error('Medical follow-up email delivery failed', error);
+  } catch {
+    console.error('Medical follow-up email delivery failed');
     deliveryStatus = 'failed';
     deliveryError = getMedicalFollowUpDeliveryError();
   }
@@ -1088,7 +1219,7 @@ export async function createMedicalFollowUp(
   }
 
   const initialRecord = mapMedicalFollowUp(data as MedicalFollowUpRow);
-  const delivery = await sendMedicalFollowUpEmail(initialRecord, document, filename, false);
+  const delivery = await sendMedicalFollowUpEmail(initialRecord, false);
   const record = delivery.deliveryStatus === 'failed'
     ? { ...initialRecord, emailStatus: 'failed' as const, emailError: delivery.deliveryError }
     : initialRecord;
@@ -1156,7 +1287,7 @@ export async function updateMedicalFollowUp(
   }
 
   const initialRecord = mapMedicalFollowUp(data as MedicalFollowUpRow);
-  const delivery = await sendMedicalFollowUpEmail(initialRecord, document, filename, true);
+  const delivery = await sendMedicalFollowUpEmail(initialRecord, true);
   const record = delivery.deliveryStatus === 'failed'
     ? { ...initialRecord, emailStatus: 'failed' as const, emailError: delivery.deliveryError }
     : initialRecord;
@@ -1178,18 +1309,19 @@ export async function listMyMedicalFollowUps(userId: string) {
   }
 
   assertSupabaseConfigured();
-  const { data, error } = await supabase
-    .from(TABLES.MEDICAL_FOLLOW_UPS)
-    .select('*')
-    .eq('user_id', userId)
-    .order('date_formation', { ascending: false })
-    .order('created_at', { ascending: false });
+  const rows = await fetchAllPages<MedicalFollowUpRow>(
+    (from, to) => supabase
+      .from(TABLES.MEDICAL_FOLLOW_UPS)
+      .select('*')
+      .eq('user_id', userId)
+      .order('date_formation', { ascending: false })
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to),
+    'suivis médicaux',
+  );
 
-  if (error) {
-    throw error;
-  }
-
-  return ((data ?? []) as MedicalFollowUpRow[]).map(mapMedicalFollowUp);
+  return rows.map(mapMedicalFollowUp);
 }
 
 export async function getMyMedicalFollowUp(id: string, userId: string) {
@@ -1331,7 +1463,7 @@ export async function sendMainCouranteEmail(
     });
 
     if (error || data?.status !== 'sent') {
-      console.error('Main courante email delivery failed', error ?? data);
+      console.error('Main courante email delivery failed');
       return {
         deliveryStatus: 'failed',
         deliveryError: getMainCouranteDeliveryError(),
@@ -1344,8 +1476,8 @@ export async function sendMainCouranteEmail(
       deliveryError: null,
       providerId: typeof data.providerId === 'string' ? data.providerId : null,
     };
-  } catch (error) {
-    console.error('Main courante email delivery failed', error);
+  } catch {
+    console.error('Main courante email delivery failed');
     return {
       deliveryStatus: 'failed',
       deliveryError: getMainCouranteDeliveryError(),
@@ -1405,15 +1537,19 @@ export async function createMainCourante(
   }
 
   const id = createUuid();
-  const pdfStoragePath = `${currentUser.id}/${id}/${safeFilename}`;
+  let pdfStoragePath = `${currentUser.id}/${id}/${safeFilename}`;
+  let pdfFileSize = document.size;
 
   try {
-    await uploadPrivateFile(
-      STORAGE_BUCKETS.MAIN_COURANTES,
-      pdfStoragePath,
+    const finalized = await uploadFormPdfThroughFinalizer(
+      'main_courante',
+      currentUser.id,
+      id,
+      safeFilename,
       document,
-      { upsert: false },
     );
+    pdfStoragePath = finalized.storagePath;
+    pdfFileSize = finalized.fileSize;
 
     const { data, error } = await supabase
       .from(TABLES.MAIN_COURANTES)
@@ -1423,7 +1559,7 @@ export async function createMainCourante(
         id,
         pdfStoragePath,
         safeFilename,
-        document.size,
+        pdfFileSize,
       ))
       .select('*')
       .single();
@@ -1452,8 +1588,8 @@ export async function createMainCourante(
   } catch (error) {
     try {
       await removeUploadedFile(STORAGE_BUCKETS.MAIN_COURANTES, pdfStoragePath);
-    } catch (cleanupError) {
-      console.error('Main courante PDF cleanup failed', cleanupError);
+    } catch {
+      console.error('Main courante PDF cleanup failed');
     }
     throw error;
   }
@@ -1467,18 +1603,19 @@ export async function listMyMainCourantes(userId: string) {
   }
 
   assertSupabaseConfigured();
-  const { data, error } = await supabase
-    .from(TABLES.MAIN_COURANTES)
-    .select('*')
-    .eq('user_id', userId)
-    .order('date_main_courante', { ascending: false })
-    .order('created_at', { ascending: false });
+  const rows = await fetchAllPages<MainCouranteRow>(
+    (from, to) => supabase
+      .from(TABLES.MAIN_COURANTES)
+      .select('*')
+      .eq('user_id', userId)
+      .order('date_main_courante', { ascending: false })
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to),
+    'mains courantes',
+  );
 
-  if (error) {
-    throw error;
-  }
-
-  return ((data ?? []) as MainCouranteRow[]).map(mapMainCourante);
+  return rows.map(mapMainCourante);
 }
 
 export async function getMainCourantePdfBlob(record: MainCouranteRecord) {
@@ -1586,7 +1723,7 @@ export async function sendEquipmentRepairRequestEmail(
     });
 
     if (error || data?.status !== 'sent') {
-      console.error('Equipment repair email delivery failed', error ?? data);
+      console.error('Equipment repair email delivery failed');
       return {
         deliveryStatus: 'failed',
         deliveryError: getEquipmentRepairRequestDeliveryError(),
@@ -1599,8 +1736,8 @@ export async function sendEquipmentRepairRequestEmail(
       deliveryError: null,
       providerId: typeof data.providerId === 'string' ? data.providerId : null,
     };
-  } catch (error) {
-    console.error('Equipment repair email delivery failed', error);
+  } catch {
+    console.error('Equipment repair email delivery failed');
     return {
       deliveryStatus: 'failed',
       deliveryError: getEquipmentRepairRequestDeliveryError(),
@@ -1652,15 +1789,19 @@ export async function createEquipmentRepairRequest(
   }
 
   const id = createUuid();
-  const pdfStoragePath = `${currentUser.id}/${id}/${safeFilename}`;
+  let pdfStoragePath = `${currentUser.id}/${id}/${safeFilename}`;
+  let pdfFileSize = document.size;
 
   try {
-    await uploadPrivateFile(
-      STORAGE_BUCKETS.EQUIPMENT_REPAIR_REQUESTS,
-      pdfStoragePath,
+    const finalized = await uploadFormPdfThroughFinalizer(
+      'demande_reparation',
+      currentUser.id,
+      id,
+      safeFilename,
       document,
-      { upsert: false },
     );
+    pdfStoragePath = finalized.storagePath;
+    pdfFileSize = finalized.fileSize;
 
     const { data, error } = await supabase
       .from(TABLES.EQUIPMENT_REPAIR_REQUESTS)
@@ -1670,7 +1811,7 @@ export async function createEquipmentRepairRequest(
         id,
         pdfStoragePath,
         safeFilename,
-        document.size,
+        pdfFileSize,
       ))
       .select('*')
       .single();
@@ -1699,8 +1840,8 @@ export async function createEquipmentRepairRequest(
   } catch (error) {
     try {
       await removeUploadedFile(STORAGE_BUCKETS.EQUIPMENT_REPAIR_REQUESTS, pdfStoragePath);
-    } catch (cleanupError) {
-      console.error('Equipment repair request PDF cleanup failed', cleanupError);
+    } catch {
+      console.error('Equipment repair request PDF cleanup failed');
     }
     throw error;
   }
@@ -1714,18 +1855,19 @@ export async function listMyEquipmentRepairRequests(userId: string) {
   }
 
   assertSupabaseConfigured();
-  const { data, error } = await supabase
-    .from(TABLES.EQUIPMENT_REPAIR_REQUESTS)
-    .select('*')
-    .eq('user_id', userId)
-    .order('date_demande', { ascending: false })
-    .order('created_at', { ascending: false });
+  const rows = await fetchAllPages<EquipmentRepairRequestRow>(
+    (from, to) => supabase
+      .from(TABLES.EQUIPMENT_REPAIR_REQUESTS)
+      .select('*')
+      .eq('user_id', userId)
+      .order('date_demande', { ascending: false })
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to),
+    'demandes de réparation',
+  );
 
-  if (error) {
-    throw error;
-  }
-
-  return ((data ?? []) as EquipmentRepairRequestRow[]).map(mapEquipmentRepairRequest);
+  return rows.map(mapEquipmentRepairRequest);
 }
 
 export async function getEquipmentRepairRequestPdfBlob(record: EquipmentRepairRequestRecord) {
@@ -1839,6 +1981,19 @@ export async function listFormEmailDestinations(): Promise<FormEmailDestinations
   }
 
   assertSupabaseConfigured();
+  const currentUser = await getCurrentUser();
+  if (!currentUser) {
+    return createDefaultFormEmailDestinations();
+  }
+  const currentProfile = await getProfile(currentUser.id);
+  if (currentProfile?.role !== 'admin') {
+    return createDefaultFormEmailDestinations();
+  }
+  const { data: hasAdminMfa, error: mfaError } = await supabase.rpc('has_admin_mfa');
+  if (mfaError || hasAdminMfa !== true) {
+    return createDefaultFormEmailDestinations();
+  }
+
   const { data, error } = await supabase
     .from(TABLES.EMAIL_DESTINATIONS)
     .select('form_key, recipients');
@@ -1853,8 +2008,8 @@ export async function listFormEmailDestinations(): Promise<FormEmailDestinations
 export async function getFormEmailDestinations(): Promise<FormEmailDestinations> {
   try {
     return await listFormEmailDestinations();
-  } catch (error) {
-    console.warn('Les destinataires configurés sont indisponibles, utilisation des valeurs par défaut.', error);
+  } catch {
+    console.warn('Les destinataires configurés sont indisponibles, utilisation des valeurs par défaut.');
     return createDefaultFormEmailDestinations();
   }
 }
@@ -1891,20 +2046,25 @@ export async function listManagedUsers() {
   }
 
   assertSupabaseConfigured();
+  const users: Array<Parameters<typeof mapManagedUser>[0]> = [];
+  const perPage = 100;
 
-  const { data, error } = await supabase.functions.invoke('admin-users', {
-    body: {
-      action: 'list',
-    },
-  });
+  for (let page = 1; page <= 1000; page += 1) {
+    const { data, error } = await supabase.functions.invoke('admin-users', {
+      body: { action: 'list', page, perPage },
+    });
 
-  if (error) {
-    throw normalizeAdminUsersError(error.message);
+    if (error) {
+      throw normalizeAdminUsersError(error.message);
+    }
+
+    users.push(...((data?.users ?? []) as Array<Parameters<typeof mapManagedUser>[0]>));
+    if (data?.hasMore !== true) {
+      return users.map(mapManagedUser);
+    }
   }
 
-  return ((data?.users ?? []) as Array<Parameters<typeof mapManagedUser>[0]>).map(
-    mapManagedUser
-  );
+  throw new Error('La liste des utilisateurs dépasse la limite de pagination autorisée.');
 }
 
 export async function inviteManagedUser(input: {
@@ -1942,7 +2102,9 @@ export async function inviteManagedUser(input: {
       action: 'invite',
       ...input,
       redirectTo:
-        typeof window !== 'undefined' ? `${window.location.origin}${APP_ROUTES.LOGIN}` : undefined,
+        typeof window !== 'undefined'
+          ? getEmailConfirmationRedirectUrl(window.location.origin)
+          : undefined,
     },
   });
 
@@ -2073,8 +2235,25 @@ export async function updateManagedUserTrainerLevels(
   }
 }
 
-export async function updateUserEmail(email: string) {
+async function reauthenticateWithPassword(currentPassword: string) {
+  const currentUser = await getCurrentUser();
+  if (!currentUser?.email) {
+    throw new Error('Utilisateur non authentifié');
+  }
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email: currentUser.email,
+    password: currentPassword,
+  });
+
+  if (error) {
+    throw new Error('Le mot de passe actuel est incorrect.');
+  }
+}
+
+export async function updateUserEmail(email: string, currentPassword: string) {
   assertSupabaseConfigured();
+  await reauthenticateWithPassword(currentPassword);
   const { data, error } = await supabase.auth.updateUser({ email });
   if (error) {
     throw error;
@@ -2085,8 +2264,9 @@ export async function updateUserEmail(email: string) {
   }
 }
 
-export async function updateUserPassword(password: string) {
+export async function updateUserPassword(password: string, currentPassword: string) {
   assertSupabaseConfigured();
+  await reauthenticateWithPassword(currentPassword);
   const { error } = await supabase.auth.updateUser({ password });
   if (error) {
     throw error;
@@ -2114,18 +2294,28 @@ export async function listProfiles(ids?: string[]) {
   }
 
   assertSupabaseConfigured();
-  let query = supabase.from(TABLES.PROFILE_DIRECTORY).select('*').order('display_name');
-
-  if (ids?.length) {
-    query = query.in('id', ids);
+  if (ids && ids.length > QUERY_MAX_ROWS) {
+    throw new Error('La sélection de profils dépasse la limite autorisée.');
   }
 
-  const { data, error } = await query;
-  if (error) {
-    throw error;
-  }
+  const rows = await fetchAllPages<ProfileDirectoryRow>(
+    (from, to) => {
+      let query = supabase
+        .from(TABLES.PROFILE_DIRECTORY)
+        .select('*')
+        .order('display_name')
+        .order('id');
 
-  return (data ?? []).map(mapDirectoryProfile);
+      if (ids?.length) {
+        query = query.in('id', ids);
+      }
+
+      return query.range(from, to);
+    },
+    'profils',
+  );
+
+  return rows.map(mapDirectoryProfile);
 }
 
 export async function getProfile(id: string) {
@@ -2143,16 +2333,17 @@ export async function listEvents() {
   }
 
   assertSupabaseConfigured();
-  const { data, error } = await supabase
-    .from(TABLES.EVENTS)
-    .select('*')
-    .order('date', { ascending: true });
+  const rows = await fetchAllPages<EventRow>(
+    (from, to) => supabase
+      .from(TABLES.EVENTS)
+      .select('*')
+      .order('date', { ascending: true })
+      .order('id')
+      .range(from, to),
+    'événements',
+  );
 
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? []).map(mapEvent);
+  return rows.map(mapEvent);
 }
 
 export async function getEventById(id: string) {
@@ -2209,7 +2400,6 @@ export async function createEvent(event: Omit<CalendarEvent, 'id' | 'createdAt'>
       location: event.location ?? null,
       ...formateurPayload,
       date: event.date.toISOString(),
-      capacity: event.capacity,
       registration_closes_at: event.registrationClosesAt?.toISOString() ?? null,
     })
     .select()
@@ -2253,7 +2443,6 @@ export async function updateEvent(
       location: event.location ?? null,
       ...formateurPayload,
       date: event.date.toISOString(),
-      capacity: event.capacity,
       registration_closes_at: event.registrationClosesAt?.toISOString() ?? null,
     })
     .eq('id', eventId)
@@ -2565,18 +2754,19 @@ export async function listMyTrainingHistory(userId: string) {
   }
 
   assertSupabaseConfigured();
-  const { data, error } = await supabase
-    .from(TABLES.TRAINING_REGISTRATIONS)
-    .select('*, events(*)')
-    .eq('user_id', userId)
-    .neq('status', 'cancelled')
-    .order('registered_at', { ascending: false });
+  const rows = await fetchAllPages<TrainingRegistrationRow & { events: EventRow | null }>(
+    (from, to) => supabase
+      .from(TABLES.TRAINING_REGISTRATIONS)
+      .select('*, events(*)')
+      .eq('user_id', userId)
+      .neq('status', 'cancelled')
+      .order('registered_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to),
+    'historique des formations',
+  );
 
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? []).flatMap((row) => {
+  return rows.flatMap((row) => {
     const eventRow = row.events as unknown as EventRow | null;
     if (!eventRow) {
       return [];
@@ -2586,9 +2776,6 @@ export async function listMyTrainingHistory(userId: string) {
     return [{ ...registration, event: mapEvent(eventRow) }];
   });
 }
-
-const OFFLINE_DOCUMENT_CACHE = 'flashover78-offline-documents-v1';
-const OFFLINE_DOCUMENTS_STORAGE_KEY = 'flashover78-offline-document-metadata';
 
 function filterMockDocuments(filters: DocumentFilters) {
   const query = filters.query?.trim().toLocaleLowerCase('fr') ?? '';
@@ -2638,32 +2825,37 @@ function parseOfflineResource(value: ReturnType<typeof serializeOfflineResource>
   };
 }
 
-function readOfflineDocumentMetadata() {
+async function readOfflineDocumentMetadata(userId: string) {
   if (typeof window === 'undefined') {
     return [] as Resource[];
   }
 
   try {
-    const stored = window.localStorage.getItem(OFFLINE_DOCUMENTS_STORAGE_KEY);
-    if (!stored) {
-      return [];
-    }
-
-    return (JSON.parse(stored) as Array<ReturnType<typeof serializeOfflineResource>>)
-      .map(parseOfflineResource);
+    const key = await getOfflineDocumentEncryptionKey(userId);
+    const metadata = await readEncryptedOfflineStore<
+      Array<ReturnType<typeof serializeOfflineResource>>
+    >(
+      OFFLINE_DOCUMENT_METADATA_STORE,
+      userId,
+      key,
+    );
+    return (metadata ?? []).map(parseOfflineResource);
   } catch {
     return [];
   }
 }
 
-function writeOfflineDocumentMetadata(resources: Resource[]) {
-  if (typeof window === 'undefined') {
+async function writeOfflineDocumentMetadata(resources: Resource[], userId: string) {
+  if (typeof window === 'undefined' || !window.indexedDB) {
     return;
   }
 
-  window.localStorage.setItem(
-    OFFLINE_DOCUMENTS_STORAGE_KEY,
-    JSON.stringify(resources.map(serializeOfflineResource))
+  const key = await getOfflineDocumentEncryptionKey(userId);
+  await writeEncryptedOfflineStore(
+    OFFLINE_DOCUMENT_METADATA_STORE,
+    userId,
+    resources.map(serializeOfflineResource),
+    key,
   );
 }
 
@@ -2690,7 +2882,10 @@ export async function searchDocuments(filters: DocumentFilters = {}) {
 
   if (error) {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      const offlineResources = readOfflineDocumentMetadata();
+      const session = (await supabase.auth.getSession()).data.session;
+      const offlineResources = session
+        ? await readOfflineDocumentMetadata(session.user.id)
+        : [];
       const previousMockResources = mockResources;
       mockResources = offlineResources;
       const filtered = filterMockDocuments(filters);
@@ -2724,7 +2919,12 @@ export async function getDocumentById(id: string) {
 
   if (error) {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      return readOfflineDocumentMetadata().find((resource) => resource.id === id) ?? null;
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!session) {
+        return null;
+      }
+      return (await readOfflineDocumentMetadata(session.user.id))
+        .find((resource) => resource.id === id) ?? null;
     }
     throw error;
   }
@@ -2753,8 +2953,8 @@ export async function listDocumentVersions(resourceId: string) {
 function validateDocumentFile(file: File) {
   const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
 
-  if (!ALLOWED_DOCUMENT_EXTENSIONS.has(extension)) {
-    throw new Error('Format non autorisé. Utilisez un PDF, document texte ou diaporama.');
+  if (!ALLOWED_DOCUMENT_EXTENSIONS.has(extension) || !isUploadableDocumentExtension(extension)) {
+    throw new Error('Format non autorisé. Les documents Office legacy (.doc/.ppt) nécessitent une analyse dédiée.');
   }
 
   if (file.size < 1) {
@@ -2771,7 +2971,8 @@ function validateDocumentFile(file: File) {
 function buildDocumentStoragePath(
   category: ResourceCategory,
   file: File,
-  resourceId?: string
+  resourceId?: string,
+  ownerId?: string,
 ) {
   const extension = validateDocumentFile(file);
   const baseName = file.name
@@ -2785,7 +2986,8 @@ function buildDocumentStoragePath(
   const folder = RESOURCE_CATEGORY_FOLDER[category];
   const catalogFolder = resourceId ? `catalog/${resourceId}` : 'catalog/new';
   const prefix = folder ? `${folder}/${catalogFolder}` : catalogFolder;
-  return `${prefix}/${Date.now()}-${baseName || 'document'}.${extension}`;
+  const ownerPrefix = ownerId ? `${ownerId}/` : '';
+  return `${ownerPrefix}${prefix}/${Date.now()}-${baseName || 'document'}.${extension}`;
 }
 
 async function removeUploadedFile(bucket: string, path: string) {
@@ -2793,7 +2995,21 @@ async function removeUploadedFile(bucket: string, path: string) {
     return;
   }
 
-  await supabase.storage.from(bucket).remove([path]);
+  const { error } = await supabase.storage.from(bucket).remove([path]);
+  if (!error) return;
+
+  try {
+    const { error: queueError } = await supabase.rpc('enqueue_storage_cleanup', {
+      p_bucket_id: bucket,
+      p_storage_path: path,
+    });
+    if (queueError) {
+      console.error('Storage cleanup queue unavailable');
+    }
+  } catch {
+    console.error('Storage cleanup queue unavailable');
+  }
+  throw error;
 }
 
 function collectDocumentStorageFiles(
@@ -2837,6 +3053,19 @@ async function removeDocumentStorageFiles(
   for (const [bucketId, paths] of pathsByBucket) {
     const { error } = await supabase.storage.from(bucketId).remove(paths);
     if (error) {
+      await Promise.all(paths.map(async (storagePath) => {
+        try {
+          const { error: queueError } = await supabase.rpc('enqueue_storage_cleanup', {
+            p_bucket_id: bucketId,
+            p_storage_path: storagePath,
+          });
+          if (queueError) {
+            console.error('Storage cleanup queue unavailable');
+          }
+        } catch {
+          console.error('Storage cleanup queue unavailable');
+        }
+      }));
       throw error;
     }
   }
@@ -2848,8 +3077,14 @@ export async function createCatalogDocument(input: {
 }) {
   await ensureCurrentUserCanContribute();
   const bucket = RESOURCE_CATEGORY_BUCKET[input.metadata.category];
-  const path = buildDocumentStoragePath(input.metadata.category, input.file);
-  await uploadPrivateFile(bucket, path, input.file);
+  const currentUserId = isDevAuthBypassEnabled
+    ? devUser.id
+    : (await getCurrentUser())?.id;
+  if (!currentUserId) {
+    throw new Error('Utilisateur non authentifié');
+  }
+  const path = buildDocumentStoragePath(input.metadata.category, input.file, undefined, currentUserId);
+  const uploaded = await uploadPrivateFile(bucket, path, input.file);
 
   if (isDevAuthBypassEnabled) {
     const now = new Date();
@@ -2865,8 +3100,8 @@ export async function createCatalogDocument(input: {
       effectiveAt: input.metadata.effectiveAt ?? null,
       expiresAt: input.metadata.expiresAt ?? null,
       originalFilename: input.file.name,
-      mimeType: input.file.type || null,
-      fileSize: input.file.size,
+      mimeType: expectedDocumentMimeType(path.split('.').pop()?.toLowerCase() ?? ''),
+      fileSize: uploaded.fileSize,
       bucketId: bucket,
       storagePath: path,
       updatedAt: now,
@@ -2883,7 +3118,7 @@ export async function createCatalogDocument(input: {
         bucketId: bucket,
         storagePath: path,
         originalFilename: input.file.name,
-        mimeType: input.file.type || null,
+        mimeType: expectedDocumentMimeType(path.split('.').pop()?.toLowerCase() ?? ''),
         fileSize: input.file.size,
         authorName: input.metadata.authorName,
         effectiveAt: input.metadata.effectiveAt ?? null,
@@ -2906,8 +3141,8 @@ export async function createCatalogDocument(input: {
       p_bucket_id: bucket,
       p_storage_path: path,
       p_original_filename: input.file.name,
-      p_mime_type: input.file.type || null,
-      p_file_size: input.file.size,
+      p_mime_type: expectedDocumentMimeType(path.split('.').pop()?.toLowerCase() ?? ''),
+      p_file_size: uploaded.fileSize,
     });
 
     if (error) {
@@ -2930,12 +3165,19 @@ export async function replaceDocumentVersion(input: {
   expiresAt?: Date | null;
 }) {
   await ensureCurrentUserCanContribute();
+  const currentUserId = isDevAuthBypassEnabled
+    ? devUser.id
+    : (await getCurrentUser())?.id;
+  if (!currentUserId) {
+    throw new Error('Utilisateur non authentifié');
+  }
   const path = buildDocumentStoragePath(
     input.resource.category,
     input.file,
-    input.resource.id
+    input.resource.id,
+    currentUserId,
   );
-  await uploadPrivateFile(input.resource.bucketId, path, input.file);
+  const uploaded = await uploadPrivateFile(input.resource.bucketId, path, input.file);
 
   if (isDevAuthBypassEnabled) {
     const now = new Date();
@@ -2945,8 +3187,8 @@ export async function replaceDocumentVersion(input: {
       bucketId: input.resource.bucketId,
       storagePath: path,
       originalFilename: input.file.name,
-      mimeType: input.file.type || null,
-      fileSize: input.file.size,
+      mimeType: expectedDocumentMimeType(path.split('.').pop()?.toLowerCase() ?? ''),
+      fileSize: uploaded.fileSize,
       authorName: input.authorName,
       effectiveAt: input.effectiveAt ?? null,
       expiresAt: input.expiresAt ?? null,
@@ -2965,7 +3207,7 @@ export async function replaceDocumentVersion(input: {
             effectiveAt: input.effectiveAt ?? null,
             expiresAt: input.expiresAt ?? null,
             originalFilename: input.file.name,
-            mimeType: input.file.type || null,
+            mimeType: expectedDocumentMimeType(path.split('.').pop()?.toLowerCase() ?? ''),
             fileSize: input.file.size,
             storagePath: path,
             updatedAt: now,
@@ -2986,8 +3228,8 @@ export async function replaceDocumentVersion(input: {
       p_bucket_id: input.resource.bucketId,
       p_storage_path: path,
       p_original_filename: input.file.name,
-      p_mime_type: input.file.type || null,
-      p_file_size: input.file.size,
+      p_mime_type: expectedDocumentMimeType(path.split('.').pop()?.toLowerCase() ?? ''),
+      p_file_size: uploaded.fileSize,
     });
 
     if (error) {
@@ -3042,7 +3284,8 @@ export async function updateDocumentMetadata(
 
 export async function deleteCatalogDocument(resource: Resource) {
   await ensureCurrentUserIsAdmin();
-  await clearOfflineDocumentCache(resource);
+  const currentUser = isDevAuthBypassEnabled ? devUser : await getCurrentUser();
+  await clearOfflineDocumentCache(resource, currentUser?.id);
 
   if (isDevAuthBypassEnabled) {
     mockResources = mockResources.filter((candidate) => candidate.id !== resource.id);
@@ -3052,7 +3295,7 @@ export async function deleteCatalogDocument(resource: Resource) {
 
   assertSupabaseConfigured();
   const versions = await listDocumentVersions(resource.id);
-  await removeDocumentStorageFiles(collectDocumentStorageFiles(resource, versions));
+  const storageFiles = collectDocumentStorageFiles(resource, versions);
 
   const { error } = await supabase.rpc('delete_document', {
     p_resource_id: resource.id,
@@ -3060,6 +3303,14 @@ export async function deleteCatalogDocument(resource: Resource) {
 
   if (error) {
     throw error;
+  }
+
+  try {
+    await removeDocumentStorageFiles(storageFiles);
+  } catch {
+    throw new Error(
+      'Le catalogue a été supprimé, mais certains fichiers doivent encore être purgés du stockage.'
+    );
   }
 }
 
@@ -3139,10 +3390,31 @@ export async function cacheDocumentForOffline(resource: Resource) {
     throw new Error('Le stockage hors ligne n’est pas disponible sur cet appareil.');
   }
 
+  const currentUser = isDevAuthBypassEnabled ? devUser : await getCurrentUser();
+  if (!currentUser) {
+    throw new Error('Authentification requise pour le mode hors ligne.');
+  }
+
+  await enforceOfflineDocumentOwner(currentUser.id);
+
   const url = await getDocumentDownloadUrl(resource);
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Impossible de télécharger le document pour le mode hors ligne.');
+  }
+
+  // The download may outlive a logout or account switch. Revalidate both the
+  // local owner marker and the current Auth session immediately before any
+  // private bytes are written to Cache Storage.
+  if (!isDevAuthBypassEnabled) {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (
+      sessionError ||
+      sessionData.session?.user.id !== currentUser.id ||
+      !(await isOfflineDocumentOwner(currentUser.id))
+    ) {
+      throw new Error('La session a changé pendant le téléchargement hors ligne.');
+    }
   }
 
   const cache = await window.caches.open(OFFLINE_DOCUMENT_CACHE);
@@ -3154,15 +3426,36 @@ export async function cacheDocumentForOffline(resource: Resource) {
       )
       .map((request) => cache.delete(request))
   );
-  await cache.put(getOfflineCacheUrl(resource), response);
+  // Private document bytes are encrypted before they enter Cache Storage.
+  // The development auth bypass is local-only and keeps its existing preview
+  // behavior; production requires IndexedDB + WebCrypto and fails closed if
+  // either is unavailable.
+  const responseToCache = isDevAuthBypassEnabled
+    ? response
+    : await encryptOfflineResponse(
+        response,
+        await getOfflineDocumentEncryptionKey(currentUser.id),
+      );
+  await cache.put(getOfflineCacheUrl(resource), responseToCache);
+  try {
+    await markOfflineDocumentCached(resource.id, currentUser.id);
 
-  const storedResources = readOfflineDocumentMetadata().filter(
-    (candidate) => candidate.id !== resource.id
-  );
-  writeOfflineDocumentMetadata([
-    { ...resource, isOfflineSelected: true },
-    ...storedResources,
-  ]);
+    const storedResources = (await readOfflineDocumentMetadata(currentUser.id)).filter(
+      (candidate) => candidate.id !== resource.id
+    );
+    await writeOfflineDocumentMetadata([
+      { ...resource, isOfflineSelected: true },
+      ...storedResources,
+    ], currentUser.id);
+  } catch (error) {
+    await clearOfflineDocumentCache(resource, currentUser.id);
+    throw error;
+  }
+
+  if (!isDevAuthBypassEnabled && !(await isOfflineDocumentOwner(currentUser.id))) {
+    await clearOfflineDocumentCache(resource, currentUser.id);
+    throw new Error('La session a changé pendant la mise en cache hors ligne.');
+  }
 
   if (isDevAuthBypassEnabled) {
     mockResources = mockResources.map((candidate) =>
@@ -3179,11 +3472,12 @@ export async function cacheDocumentForOffline(resource: Resource) {
   });
 
   if (error) {
+    await clearOfflineDocumentCache(resource, currentUser.id);
     throw error;
   }
 }
 
-async function clearOfflineDocumentCache(resource: Resource) {
+async function clearOfflineDocumentCache(resource: Resource, userId?: string) {
   if (typeof window !== 'undefined' && 'caches' in window) {
     const cache = await window.caches.open(OFFLINE_DOCUMENT_CACHE);
     const keys = await cache.keys();
@@ -3194,16 +3488,23 @@ async function clearOfflineDocumentCache(resource: Resource) {
         )
         .map((request) => cache.delete(request))
     );
-    writeOfflineDocumentMetadata(
-      readOfflineDocumentMetadata().filter(
-        (candidate) => candidate.id !== resource.id
-      )
-    );
+    if (userId) {
+      await writeOfflineDocumentMetadata(
+        (await readOfflineDocumentMetadata(userId)).filter(
+          (candidate) => candidate.id !== resource.id,
+        ),
+        userId,
+      );
+    }
+  }
+  if (userId) {
+    await clearOfflineDocumentTimestamp(resource.id, userId);
   }
 }
 
 export async function removeDocumentFromOffline(resource: Resource) {
-  await clearOfflineDocumentCache(resource);
+  const currentUser = isDevAuthBypassEnabled ? devUser : await getCurrentUser();
+  await clearOfflineDocumentCache(resource, currentUser?.id);
 
   if (isDevAuthBypassEnabled) {
     mockResources = mockResources.map((candidate) =>
@@ -3230,13 +3531,59 @@ export async function getCachedDocumentUrl(resource: Resource) {
     return null;
   }
 
+  const session = isDevAuthBypassEnabled
+    ? null
+    : (await supabase.auth.getSession()).data.session;
+  const currentUser = isDevAuthBypassEnabled ? devUser : session?.user ?? null;
+  if (
+    !currentUser ||
+    (!isDevAuthBypassEnabled && session?.expires_at && session.expires_at * 1000 <= Date.now())
+  ) {
+    await clearOfflineDocumentData();
+    return null;
+  }
+
+  const browserOnline = typeof navigator === 'undefined' || navigator.onLine;
+  if (shouldRevalidateOfflineSession(isDevAuthBypassEnabled, browserOnline)) {
+    const { data: remoteUser, error: remoteUserError } = await supabase.auth.getUser();
+    const { data: activeSession, error: activeSessionError } = await supabase.rpc(
+      'require_active_session',
+    );
+    if (!isRemoteOfflineSessionValid(
+      currentUser.id,
+      remoteUser.user?.id,
+      remoteUserError,
+      activeSession,
+      activeSessionError,
+    )) {
+      await clearOfflineDocumentData();
+      return null;
+    }
+  }
+
+  await enforceOfflineDocumentOwner(currentUser.id);
+  await purgeExpiredOfflineDocumentData(Date.now(), currentUser.id);
+
   const cache = await window.caches.open(OFFLINE_DOCUMENT_CACHE);
   const response = await cache.match(getOfflineCacheUrl(resource));
   if (!response) {
     return null;
   }
 
-  return URL.createObjectURL(await response.blob());
+  try {
+    const documentBlob = isDevAuthBypassEnabled
+      ? await response.blob()
+      : await decryptOfflineResponse(
+          response,
+          await getOfflineDocumentEncryptionKey(currentUser.id),
+        );
+    return URL.createObjectURL(documentBlob);
+  } catch {
+    // Legacy plaintext entries and entries encrypted with a deleted account
+    // key are unusable and must never be exposed as a fallback.
+    await clearOfflineDocumentCache(resource, currentUser.id);
+    return null;
+  }
 }
 
 async function fetchCarpoolContext(tripRows: CarpoolTripRow[]) {
@@ -3252,11 +3599,16 @@ async function fetchCarpoolContext(tripRows: CarpoolTripRow[]) {
       ? supabase.from(TABLES.PROFILE_DIRECTORY).select('*').in('id', driverIds)
       : Promise.resolve({ data: [], error: null }),
     tripIds.length
-      ? supabase
-          .from(TABLES.CARPOOL_REQUESTS)
-          .select('*')
-          .in('trip_id', tripIds)
-          .order('created_at', { ascending: false })
+      ? fetchAllPages<CarpoolRequestRow>(
+          (from, to) => supabase
+            .from(TABLES.CARPOOL_REQUESTS)
+            .select('*')
+            .in('trip_id', tripIds)
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .range(from, to),
+          'demandes de covoiturage',
+        ).then((data) => ({ data, error: null }))
       : Promise.resolve({ data: [], error: null }),
   ]);
 
@@ -3344,21 +3696,23 @@ export async function listTrips(eventId?: string) {
   }
 
   assertSupabaseConfigured();
-  let query = supabase
-    .from(TABLES.CARPOOL_TRIPS)
-    .select('*')
-    .order('departure_datetime', { ascending: true });
+  const tripRows = await fetchAllPages<CarpoolTripRow>(
+    (from, to) => {
+      let query = supabase
+        .from(TABLES.CARPOOL_TRIPS)
+        .select('*')
+        .order('departure_datetime', { ascending: true })
+        .order('id');
 
-  if (eventId) {
-    query = query.eq('event_id', eventId);
-  }
+      if (eventId) {
+        query = query.eq('event_id', eventId);
+      }
 
-  const { data, error } = await query;
-  if (error) {
-    throw error;
-  }
+      return query.range(from, to);
+    },
+    'trajets',
+  );
 
-  const tripRows = data ?? [];
   const context = await fetchCarpoolContext(tripRows);
   return tripRows.map((row) => mapCarpoolTrip(row, context));
 }
@@ -3638,17 +3992,17 @@ export async function listMyTrips(userId: string) {
   }
 
   assertSupabaseConfigured();
-  const { data, error } = await supabase
-    .from(TABLES.CARPOOL_TRIPS)
-    .select('*')
-    .eq('driver_id', userId)
-    .order('departure_datetime', { ascending: true });
+  const tripRows = await fetchAllPages<CarpoolTripRow>(
+    (from, to) => supabase
+      .from(TABLES.CARPOOL_TRIPS)
+      .select('*')
+      .eq('driver_id', userId)
+      .order('departure_datetime', { ascending: true })
+      .order('id')
+      .range(from, to),
+    'trajets personnels',
+  );
 
-  if (error) {
-    throw error;
-  }
-
-  const tripRows = data ?? [];
   const context = await fetchCarpoolContext(tripRows);
   return tripRows.map((row) => mapCarpoolTrip(row, context));
 }
@@ -3664,21 +4018,22 @@ export async function listMyRequests(userId: string): Promise<CarpoolMyRequest[]
   }
 
   assertSupabaseConfigured();
-  const { data, error } = await supabase
-    .from(TABLES.CARPOOL_REQUESTS)
-    .select('*')
-    .eq('requester_id', userId)
-    .order('created_at', { ascending: false });
+  const rows = await fetchAllPages<CarpoolRequestRow>(
+    (from, to) => supabase
+      .from(TABLES.CARPOOL_REQUESTS)
+      .select('*')
+      .eq('requester_id', userId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to),
+    'demandes de covoiturage',
+  );
 
-  if (error) {
-    throw error;
-  }
-
-  const tripIds = Array.from(new Set((data ?? []).map((request) => request.trip_id)));
+  const tripIds = Array.from(new Set(rows.map((request) => request.trip_id)));
   const trips = tripIds.length ? await listTrips() : [];
   const tripMap = new Map(trips.map((trip) => [trip.id, trip]));
 
-  return (data ?? []).map((row) => ({
+  return rows.map((row) => ({
     id: row.id,
     tripId: row.trip_id,
     requesterId: row.requester_id,
@@ -3691,58 +4046,6 @@ export async function listMyRequests(userId: string): Promise<CarpoolMyRequest[]
     createdAt: new Date(row.created_at),
     trip: tripMap.get(row.trip_id) ?? null,
   }));
-}
-
-function normalizeAuthError(message: string) {
-  if (message.includes('Invalid login credentials')) {
-    return new Error('Email ou mot de passe incorrect');
-  }
-  if (message.includes('Password should be at least')) {
-    return new Error('Le mot de passe doit contenir au moins 6 caractères');
-  }
-  if (message.includes('User already registered')) {
-    return new Error('Cette adresse email est déjà utilisée');
-  }
-  if (message.includes('Email not confirmed')) {
-    return new Error('Confirmez votre email avant de vous connecter.');
-  }
-  if (
-    message.includes('email rate limit exceeded') ||
-    message.includes('over_email_send_rate_limit')
-  ) {
-    return new Error(
-      "Trop de demandes d'inscription ont été envoyées. Attendez quelques minutes avant de réessayer."
-    );
-  }
-  if (message.includes('For security purposes, you can only request this after')) {
-    return new Error(
-      "Une demande d'inscription vient déjà d'être envoyée. Attendez un instant avant de recommencer."
-    );
-  }
-  if (message.includes('Email address not authorized')) {
-    return new Error(
-      "Cette adresse email n'est pas autorisée par la configuration SMTP actuelle de Supabase."
-    );
-  }
-  if (
-    message.includes('Auth session missing') ||
-    message.includes('Invalid Refresh Token') ||
-    message.includes('refresh_token_not_found')
-  ) {
-    return new Error(
-      'Ce lien de réinitialisation est invalide ou a expiré. Demandez un nouveau lien.'
-    );
-  }
-  if (
-    message.includes('New password should be different') ||
-    message.includes('same password')
-  ) {
-    return new Error('Choisissez un mot de passe différent de votre ancien mot de passe.');
-  }
-  if (message.includes('Password should be at least')) {
-    return new Error('Le mot de passe ne respecte pas la longueur minimale requise.');
-  }
-  return new Error(message);
 }
 
 export function getRouteToTrip(tripId: string) {

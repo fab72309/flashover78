@@ -13,6 +13,7 @@ import type {
   CarpoolPostKind,
 } from '../types';
 import { devUser, isDevAuthBypassEnabled } from '../utils/devAuth';
+import { fetchAllPages } from '../utils/paginate';
 
 type CarpoolPostRow = {
   id: string;
@@ -247,16 +248,31 @@ async function fetchPostContext(rows: CarpoolPostRow[]) {
     };
   }
 
-  const [offerMatches, needMatches] = await Promise.all([
-    supabase.from(TABLES.CARPOOL_MATCHES).select('*').in('offer_post_id', postIds),
-    supabase.from(TABLES.CARPOOL_MATCHES).select('*').in('need_post_id', postIds),
+  const [offerMatchRows, needMatchRows] = await Promise.all([
+    fetchAllPages<CarpoolMatchRow>(
+      (from, to) => supabase
+        .from(TABLES.CARPOOL_MATCHES)
+        .select('*')
+        .in('offer_post_id', postIds)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to),
+      'correspondances de covoiturage',
+    ),
+    fetchAllPages<CarpoolMatchRow>(
+      (from, to) => supabase
+        .from(TABLES.CARPOOL_MATCHES)
+        .select('*')
+        .in('need_post_id', postIds)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to),
+      'correspondances de covoiturage',
+    ),
   ]);
 
-  if (offerMatches.error) throw offerMatches.error;
-  if (needMatches.error) throw needMatches.error;
-
   const matchMap = new Map<string, CarpoolMatchRow>();
-  ([...(offerMatches.data ?? []), ...(needMatches.data ?? [])] as CarpoolMatchRow[]).forEach((row) => {
+  ([...offerMatchRows, ...needMatchRows] as CarpoolMatchRow[]).forEach((row) => {
     matchMap.set(row.id, row);
   });
   const matchRows = Array.from(matchMap.values());
@@ -265,6 +281,10 @@ async function fetchPostContext(rows: CarpoolPostRow[]) {
     matchRows.flatMap((row) => [row.offer_post_id, row.need_post_id])
       .filter((id) => !knownPostIds.has(id))
   ));
+
+  if (relatedPostIds.length > 1000) {
+    throw new Error('Le contexte de covoiturage dépasse la limite autorisée.');
+  }
 
   const relatedPosts = relatedPostIds.length
     ? await supabase.from(TABLES.CARPOOL_POSTS).select('*').in('id', relatedPostIds)
@@ -369,17 +389,21 @@ function mapPostRow(row: CarpoolPostRow, context: Awaited<ReturnType<typeof fetc
 
 async function queryPostRows(eventId?: string, authorId?: string) {
   assertSupabaseConfigured();
-  let query = supabase
-    .from(TABLES.CARPOOL_POSTS)
-    .select('*')
-    .order('departure_datetime', { ascending: true });
+  return fetchAllPages<CarpoolPostRow>(
+    (from, to) => {
+      let query = supabase
+        .from(TABLES.CARPOOL_POSTS)
+        .select('*')
+        .order('departure_datetime', { ascending: true })
+        .order('id');
 
-  if (eventId) query = query.eq('event_id', eventId);
-  if (authorId) query = query.eq('author_id', authorId);
+      if (eventId) query = query.eq('event_id', eventId);
+      if (authorId) query = query.eq('author_id', authorId);
 
-  const { data, error } = await query;
-  if (error) throw error;
-  return (data ?? []) as CarpoolPostRow[];
+      return query.range(from, to);
+    },
+    'publications de covoiturage',
+  );
 }
 
 async function mapPostRows(rows: CarpoolPostRow[]) {

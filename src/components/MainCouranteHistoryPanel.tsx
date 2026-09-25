@@ -20,11 +20,13 @@ import {
   formatEmailRecipients,
   mergeEmailRecipients,
 } from '../utils/emailDestinations';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 type PdfAction = 'open' | 'download' | 'share';
 
 function getEmailLabel(record: MainCouranteRecord) {
   if (record.emailStatus === 'sent') return 'Email envoyé';
+  if (record.emailStatus === 'sending') return 'Envoi en cours';
   if (record.emailStatus === 'failed') return 'Email à vérifier';
   return 'Email en attente';
 }
@@ -78,8 +80,8 @@ export default function MainCouranteHistoryPanel({ userId }: { userId: string })
       .then((records) => {
         if (isMounted) setItems(records);
       })
-      .catch((loadError) => {
-        console.error(loadError);
+      .catch(() => {
+        logClientFailure('Chargement de l’historique de main courante impossible');
         if (isMounted) setError(true);
       })
       .finally(() => {
@@ -105,7 +107,7 @@ export default function MainCouranteHistoryPanel({ userId }: { userId: string })
   const handlePdfAction = async (record: MainCouranteRecord, action: PdfAction) => {
     const actionKey = `${record.id}:${action}`;
     const previewWindow = action === 'open' && typeof window !== 'undefined'
-      ? window.open('', '_blank')
+      ? window.open('', '_blank', 'noopener,noreferrer')
       : null;
     setActiveAction(actionKey);
 
@@ -168,7 +170,7 @@ export default function MainCouranteHistoryPanel({ userId }: { userId: string })
     } catch (actionError) {
       if (actionError instanceof DOMException && actionError.name === 'AbortError') return;
       previewWindow?.close();
-      console.error(actionError);
+      logClientFailure('Ouverture du PDF de main courante impossible');
       showToast('Impossible d’ouvrir ou de partager le PDF de cette main courante.', 'error');
     } finally {
       setActiveAction(null);

@@ -15,6 +15,8 @@ import {
 import { APP_ROUTES } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
 import { getRequestStatusLabel } from '../utils/statusLabels';
+import { getUserFacingError } from '../utils/userFacingError';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 export default function CarpoolTripDetail() {
   const { id } = useParams<{ id: string }>();
@@ -42,8 +44,8 @@ export default function CarpoolTripDetail() {
         setError('Trajet introuvable');
       }
     } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'Impossible de charger le trajet');
+      logClientFailure('Chargement du trajet impossible');
+      setError(getUserFacingError(err, 'Impossible de charger le trajet'));
     } finally {
       setLoading(false);
     }
@@ -76,8 +78,8 @@ export default function CarpoolTripDetail() {
       await loadTrip();
       showToast('Demande envoyée au conducteur.', 'success');
     } catch (err) {
-      console.error(err);
-      showToast(err instanceof Error ? err.message : 'Impossible d’envoyer la demande', 'error');
+      logClientFailure('Envoi de la demande de covoiturage impossible');
+      showToast(getUserFacingError(err, 'Impossible d’envoyer la demande'), 'error');
     } finally {
       setSaving(false);
     }
@@ -89,8 +91,8 @@ export default function CarpoolTripDetail() {
       await loadTrip();
       showToast('Demande acceptée.', 'success');
     } catch (err) {
-      console.error(err);
-      showToast(err instanceof Error ? err.message : 'Impossible d’accepter la demande', 'error');
+      logClientFailure('Acceptation de la demande de covoiturage impossible');
+      showToast(getUserFacingError(err, 'Impossible d’accepter la demande'), 'error');
     }
   };
 
@@ -100,8 +102,8 @@ export default function CarpoolTripDetail() {
       await loadTrip();
       showToast('Demande refusée.', 'success');
     } catch (err) {
-      console.error(err);
-      showToast(err instanceof Error ? err.message : 'Impossible de refuser la demande', 'error');
+      logClientFailure('Refus de la demande de covoiturage impossible');
+      showToast(getUserFacingError(err, 'Impossible de refuser la demande'), 'error');
     }
   };
 

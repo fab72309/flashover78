@@ -5,6 +5,8 @@ import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import type { ResourceCategory } from '../types';
 import { RESOURCE_CATEGORY_LABELS } from '../utils/constants';
+import { getUserFacingError } from '../utils/userFacingError';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 const HIDDEN_GENERAL_UPLOAD_CATEGORIES = new Set<ResourceCategory>([
   'BRULAGE_TDL_FO',
@@ -74,8 +76,8 @@ export default function DocumentUploadPanel({
       await onUploaded();
       showToast('Document ajouté au catalogue.', 'success');
     } catch (error) {
-      console.error(error);
-      showToast(error instanceof Error ? error.message : 'Erreur lors de l’ajout du document', 'error');
+      logClientFailure('Ajout du document impossible');
+      showToast(getUserFacingError(error, 'Erreur lors de l’ajout du document'), 'error');
     } finally {
       setLoading(false);
     }
@@ -143,7 +145,7 @@ export default function DocumentUploadPanel({
             <input
               id="document-file"
               type="file"
-              accept=".pdf,.odt,.doc,.docx,.ppt,.pptx,.txt"
+              accept=".pdf,.odt,.docx,.pptx,.txt"
               onChange={(event) => {
                 const nextFile = event.target.files?.[0] ?? null;
                 setFile(nextFile);
@@ -163,6 +165,9 @@ export default function DocumentUploadPanel({
             </label>
             <p className="mt-2 text-body-md text-on-surface-variant">
               {file ? `${file.name} · ${Math.ceil(file.size / 1024)} Ko` : 'Aucun fichier sélectionné'}
+            </p>
+            <p className="mt-1 text-label-sm text-on-surface-variant">
+              Les anciens formats Office .doc et .ppt sont temporairement refusés tant qu’une quarantaine dédiée n’est pas disponible.
             </p>
           </div>
 

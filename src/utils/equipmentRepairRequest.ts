@@ -12,6 +12,7 @@ import {
   DEFAULT_FORM_EMAIL_DESTINATIONS,
   isValidEmailRecipient,
   mergeEmailRecipients,
+  toMailtoRecipientList,
 } from './emailDestinations';
 
 export const EQUIPMENT_REPAIR_REQUEST_ADMIN_EMAIL = DEFAULT_FORM_EMAIL_DESTINATIONS.demandeReparation[0];
@@ -201,7 +202,7 @@ export function openEquipmentRepairRequestPdf(
   const openedWindow = targetWindow && !targetWindow.closed
     ? targetWindow
     : targetWindow === undefined
-      ? window.open('', '_blank')
+      ? window.open('', '_blank', 'noopener,noreferrer')
       : null;
 
   if (!openedWindow) {
@@ -252,12 +253,13 @@ export async function shareEquipmentRepairRequestPdf(
   const body = encodeURIComponent(
     `Bonjour,\n\nVeuillez trouver en pièce jointe la demande de réparation.\n\nLa demande a été téléchargée sous le nom « ${filename} ». Ajoutez ce fichier avant l’envoi.`,
   );
-  window.location.href = `mailto:${effectiveRecipients.join(',')}?subject=${subject}&body=${body}`;
+  window.location.href = `mailto:${toMailtoRecipientList(effectiveRecipients)}?subject=${subject}&body=${body}`;
   return 'downloaded' as const;
 }
 
 export function getEquipmentRepairRequestEmailLabel(record: Pick<EquipmentRepairRequestRecord, 'emailStatus'>) {
   if (record.emailStatus === 'sent') return 'Email envoyé';
+  if (record.emailStatus === 'sending') return 'Envoi en cours';
   if (record.emailStatus === 'failed') return 'Email à vérifier';
   return 'Email en attente';
 }

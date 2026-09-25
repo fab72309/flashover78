@@ -1,30 +1,95 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
+import {
+  corsHeadersForRequest,
+  preflightResponse,
+  rejectDisallowedOrigin,
+} from '../_shared/cors.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-function jsonResponse(status: number, body: unknown) {
+function baseJsonResponse(status: number, body: unknown, request?: Request) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
-      ...corsHeaders,
+      ...corsHeadersForRequest(request),
       'Content-Type': 'application/json',
     },
   })
+}
+
+function baseInternalErrorResponse(message = 'Opération impossible.', request?: Request) {
+  return baseJsonResponse(500, { error: message }, request)
+}
+
+function auditPendingResponse(request?: Request) {
+  return baseJsonResponse(503, {
+    error: 'Opération effectuée, mais sa journalisation doit être réconciliée.',
+    code: 'audit_pending',
+    operationCompleted: true,
+  }, request)
 }
 
 const allowedRoles = new Set(['member', 'contributor', 'admin'])
 const allowedTrainerLevels = ['RSFR', 'FOR INC', 'FOR BAT'] as const
 const allowedEmailDestinationKeys = ['main_courante', 'suivi_medical', 'demande_reparation'] as const
 const requiredEmailDestinationKeys = new Set(['main_courante', 'demande_reparation'])
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const emailPattern = /^[^\s@]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/
+const PASSWORD_MIN_LENGTH = 15
+const PASSWORD_MAX_LENGTH = 128
+
+function getAllowedRedirectOrigins() {
+  const configured = (Deno.env.get('APP_ALLOWED_REDIRECT_ORIGINS') ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+  return new Set(['https://app.flashover78.com', ...configured])
+}
+
+function validateInvitationRedirect(value: unknown) {
+  const candidate = String(value ?? '').trim()
+  if (!candidate) return undefined
+
+  let redirect: URL
+  try {
+    redirect = new URL(candidate)
+  } catch {
+    throw new Error('URL de redirection invalide.')
+  }
+
+  if (!getAllowedRedirectOrigins().has(redirect.origin) || redirect.pathname !== '/login') {
+    throw new Error('URL de redirection non autorisée.')
+  }
+
+  redirect.search = ''
+  redirect.hash = ''
+  return redirect.toString()
+}
+
+async function writeAdminAudit(
+  adminClient: ReturnType<typeof createClient>,
+  actorId: string,
+  action: string,
+  targetUserId: string | null,
+  outcome: 'attempt' | 'success' | 'failure',
+  details: Record<string, unknown> = {},
+) {
+  const { error } = await adminClient.from('admin_operation_audit').insert({
+    actor_id: actorId,
+    actor_role: 'admin',
+    action,
+    target_user_id: targetUserId,
+    outcome,
+    details,
+  })
+
+  if (error) {
+    console.error('Unable to write administrator operation audit entry')
+  }
+
+  return !error
+}
 
 function normalizeTrainerLevels(value: unknown) {
   const candidates = Array.isArray(value) ? value.map((entry) => String(entry).trim().toUpperCase()) : []
-  const levels = allowedTrainerLevels.filter((level) => candidates.includes(level))
-  return levels.length > 0 ? levels : ['RSFR']
+  return allowedTrainerLevels.filter((level) => candidates.includes(level))
 }
 
 function normalizeEmailRecipients(value: unknown) {
@@ -67,7 +132,7 @@ function parseEmailDestinations(value: unknown) {
 
     const invalidRecipient = recipients.find((recipient) => !emailPattern.test(recipient))
     if (invalidRecipient) {
-      throw new Error(`L’adresse « ${invalidRecipient} » n’est pas valide.`)
+      throw new Error('Une adresse de destinataire est invalide.')
     }
 
     destinations.set(formKey, recipients)
@@ -84,12 +149,24 @@ function parseEmailDestinations(value: unknown) {
 }
 
 Deno.serve(async (request) => {
+  const originRejection = rejectDisallowedOrigin(request)
+  if (originRejection) return originRejection
+
+  const jsonResponse = (status: number, body: unknown) => baseJsonResponse(status, body, request)
+  const internalErrorResponse = (message = 'Opération impossible.') =>
+    baseInternalErrorResponse(message, request)
+
   if (request.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return preflightResponse(request)
   }
 
   if (request.method !== 'POST') {
     return jsonResponse(405, { error: 'Méthode non autorisée.' })
+  }
+
+  const contentLength = Number(request.headers.get('content-length') ?? '0')
+  if (Number.isFinite(contentLength) && contentLength > 131_072) {
+    return jsonResponse(413, { error: 'Requête trop volumineuse.' })
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
@@ -99,6 +176,10 @@ Deno.serve(async (request) => {
 
   if (!authorization) {
     return jsonResponse(401, { error: 'Authentification requise.' })
+  }
+
+  if (!supabaseUrl.trim() || !supabaseAnonKey.trim() || !supabaseServiceRoleKey.trim()) {
+    return internalErrorResponse('Configuration Supabase incomplète.')
   }
 
   const userClient = createClient(supabaseUrl, supabaseAnonKey, {
@@ -122,7 +203,8 @@ Deno.serve(async (request) => {
     .maybeSingle()
 
   if (profileError) {
-    return jsonResponse(500, { error: profileError.message })
+    console.error('Unable to load administrator profile')
+    return internalErrorResponse('Impossible de vérifier les droits administrateur.')
   }
 
   if (profile?.role !== 'admin') {
@@ -143,18 +225,58 @@ Deno.serve(async (request) => {
   let payload: Record<string, unknown> = {}
 
   try {
-    payload = await request.json()
+    const body = await request.text()
+    if (new TextEncoder().encode(body).byteLength > 131_072) {
+      return jsonResponse(413, { error: 'Requête trop volumineuse.' })
+    }
+    payload = JSON.parse(body)
   } catch {
     payload = {}
   }
 
   const action = String(payload.action ?? '')
+  const auditActionByRequest = new Map([
+    ['delete', 'delete_user'],
+    ['update_email_destinations', 'update_email_destinations'],
+    ['update_trainer_levels', 'update_trainer_levels'],
+    ['update_role', 'update_role'],
+    ['invite', 'invite_user'],
+    ['create', 'create_user'],
+  ])
+  const requestedAuditAction = auditActionByRequest.get(action)
+  if (requestedAuditAction) {
+    const targetUserId = ['delete', 'update_trainer_levels', 'update_role'].includes(action)
+      ? String(payload.userId ?? '').trim() || null
+      : null
+    const auditAvailable = await writeAdminAudit(
+      adminClient,
+      user.id,
+      requestedAuditAction,
+      targetUserId,
+      'attempt',
+      { stage: 'requested' },
+    )
+    if (!auditAvailable) {
+      return jsonResponse(503, {
+        error: 'La journalisation de sécurité est indisponible; aucune opération n’a été exécutée.',
+      })
+    }
+  }
 
   if (action === 'list') {
-    const { data, error } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 200 })
+    const requestedPage = Number(payload.page ?? 1)
+    const requestedPerPage = Number(payload.perPage ?? 100)
+    const page = Number.isInteger(requestedPage) && requestedPage >= 1
+      ? Math.min(requestedPage, 1000)
+      : 1
+    const perPage = Number.isInteger(requestedPerPage) && requestedPerPage >= 1
+      ? Math.min(requestedPerPage, 100)
+      : 100
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage })
 
     if (error) {
-      return jsonResponse(500, { error: error.message })
+      console.error('Unable to list Auth users')
+      return internalErrorResponse('Impossible de charger les utilisateurs.')
     }
 
     const ids = data.users.map((entry) => entry.id)
@@ -166,12 +288,16 @@ Deno.serve(async (request) => {
       : { data: [], error: null }
 
     if (profilesError) {
-      return jsonResponse(500, { error: profilesError.message })
+      console.error('Unable to load user profiles')
+      return internalErrorResponse('Impossible de charger les profils utilisateurs.')
     }
 
     const profileMap = new Map((profiles ?? []).map((entry) => [entry.id, entry]))
 
     return jsonResponse(200, {
+      page,
+      perPage,
+      hasMore: data.users.length === perPage,
       users: data.users.map((entry) => {
         const localProfile = profileMap.get(entry.id)
         const firstName = localProfile?.first_name ?? entry.user_metadata?.first_name ?? null
@@ -212,7 +338,10 @@ Deno.serve(async (request) => {
 
     const { data: targetUser, error: targetUserError } = await adminClient.auth.admin.getUserById(userId)
     if (targetUserError || !targetUser.user) {
-      return jsonResponse(404, { error: targetUserError?.message ?? 'Utilisateur introuvable.' })
+      if (targetUserError) {
+        console.error('Unable to load target Auth user before deletion')
+      }
+      return jsonResponse(404, { error: 'Utilisateur introuvable.' })
     }
 
     const { data: profiles, error: profilesError } = await adminClient
@@ -220,7 +349,8 @@ Deno.serve(async (request) => {
       .select('id, role, is_admin')
 
     if (profilesError) {
-      return jsonResponse(500, { error: profilesError.message })
+      console.error('Unable to load profiles before deletion')
+      return internalErrorResponse('Impossible de vérifier le compte à supprimer.')
     }
 
     const targetProfile = (profiles ?? []).find((entry) => entry.id === userId)
@@ -239,9 +369,13 @@ Deno.serve(async (request) => {
           error: 'Ce compte possède encore un document partagé qui doit être réattribué avant suppression.',
         })
       }
-      return jsonResponse(500, { error: deleteError.message })
+      console.error('Unable to delete Auth user')
+      return internalErrorResponse('Impossible de supprimer ce compte.')
     }
 
+    if (!await writeAdminAudit(adminClient, user.id, 'delete_user', userId, 'success')) {
+      return auditPendingResponse(request)
+    }
     return jsonResponse(200, { success: true })
   }
 
@@ -267,9 +401,20 @@ Deno.serve(async (request) => {
       )
 
     if (updateError) {
-      return jsonResponse(500, { error: updateError.message })
+      console.error('Unable to update email destinations')
+      return internalErrorResponse('Impossible d’enregistrer les destinataires.')
     }
 
+    if (!await writeAdminAudit(
+      adminClient,
+      user.id,
+      'update_email_destinations',
+      null,
+      'success',
+      { destination_count: destinations.length },
+    )) {
+      return auditPendingResponse(request)
+    }
     return jsonResponse(200, { success: true })
   }
 
@@ -285,9 +430,13 @@ Deno.serve(async (request) => {
       .eq('id', userId)
 
     if (updateError) {
-      return jsonResponse(500, { error: updateError.message })
+      console.error('Unable to update trainer levels')
+      return internalErrorResponse('Impossible de mettre à jour les fonctions formateur.')
     }
 
+    if (!await writeAdminAudit(adminClient, user.id, 'update_trainer_levels', userId, 'success')) {
+      return auditPendingResponse(request)
+    }
     return jsonResponse(200, { success: true })
   }
 
@@ -309,7 +458,10 @@ Deno.serve(async (request) => {
       .maybeSingle()
 
     if (targetError || !targetProfile) {
-      return jsonResponse(404, { error: targetError?.message ?? 'Utilisateur introuvable.' })
+      if (targetError) {
+        console.error('Unable to load target profile before role update')
+      }
+      return jsonResponse(404, { error: 'Utilisateur introuvable.' })
     }
 
     const targetIsAdmin = targetProfile.role === 'admin' || targetProfile.is_admin
@@ -320,7 +472,8 @@ Deno.serve(async (request) => {
         .eq('role', 'admin')
 
       if (countError) {
-        return jsonResponse(500, { error: countError.message })
+        console.error('Unable to count administrators')
+        return internalErrorResponse('Impossible de vérifier le nombre d’administrateurs.')
       }
 
       if ((count ?? 0) <= 1) {
@@ -334,9 +487,20 @@ Deno.serve(async (request) => {
       .eq('id', userId)
 
     if (updateError) {
-      return jsonResponse(500, { error: updateError.message })
+      console.error('Unable to update user role')
+      return internalErrorResponse('Impossible de mettre à jour le rôle.')
     }
 
+    if (!await writeAdminAudit(
+      adminClient,
+      user.id,
+      'update_role',
+      userId,
+      'success',
+      { previous_role: targetProfile.role, next_role: role },
+    )) {
+      return auditPendingResponse(request)
+    }
     return jsonResponse(200, { success: true })
   }
 
@@ -350,7 +514,14 @@ Deno.serve(async (request) => {
   }
 
   if (action === 'invite') {
-    const redirectTo = String(payload.redirectTo ?? '').trim() || undefined
+    let redirectTo: string | undefined
+    try {
+      redirectTo = validateInvitationRedirect(payload.redirectTo)
+    } catch (error) {
+      return jsonResponse(400, {
+        error: error instanceof Error ? error.message : 'URL de redirection invalide.',
+      })
+    }
     const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
       data: {
         first_name: firstName,
@@ -361,7 +532,8 @@ Deno.serve(async (request) => {
     })
 
     if (error) {
-      return jsonResponse(500, { error: error.message })
+      console.error('Unable to invite Auth user')
+      return internalErrorResponse('Impossible d’envoyer l’invitation.')
     }
 
     if (data.user) {
@@ -377,7 +549,24 @@ Deno.serve(async (request) => {
       })
 
       if (upsertError) {
-        return jsonResponse(500, { error: upsertError.message })
+        const { error: cleanupError } = await adminClient.auth.admin.deleteUser(data.user.id)
+        await writeAdminAudit(
+          adminClient,
+          user.id,
+          'invite_user',
+          data.user.id,
+          'failure',
+          { reason: 'profile_write_failed', cleanup_succeeded: !cleanupError },
+        )
+        return jsonResponse(500, {
+          error: cleanupError
+            ? 'La création du profil et l’annulation du compte ont échoué; une intervention est requise.'
+            : 'La création du profil a échoué; le compte a été annulé.',
+        })
+      }
+
+      if (!await writeAdminAudit(adminClient, user.id, 'invite_user', data.user.id, 'success')) {
+        return auditPendingResponse(request)
       }
     }
 
@@ -386,8 +575,10 @@ Deno.serve(async (request) => {
 
   if (action === 'create') {
     const password = String(payload.password ?? '')
-    if (password.length < 6) {
-      return jsonResponse(400, { error: 'Le mot de passe doit contenir au moins 6 caractères.' })
+    if (password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) {
+      return jsonResponse(400, {
+        error: `Le mot de passe doit contenir entre ${PASSWORD_MIN_LENGTH} et ${PASSWORD_MAX_LENGTH} caractères.`,
+      })
     }
 
     const { data, error } = await adminClient.auth.admin.createUser({
@@ -402,7 +593,8 @@ Deno.serve(async (request) => {
     })
 
     if (error) {
-      return jsonResponse(500, { error: error.message })
+      console.error('Unable to create Auth user')
+      return internalErrorResponse('Impossible de créer le compte.')
     }
 
     if (data.user) {
@@ -418,7 +610,24 @@ Deno.serve(async (request) => {
       })
 
       if (upsertError) {
-        return jsonResponse(500, { error: upsertError.message })
+        const { error: cleanupError } = await adminClient.auth.admin.deleteUser(data.user.id)
+        await writeAdminAudit(
+          adminClient,
+          user.id,
+          'create_user',
+          data.user.id,
+          'failure',
+          { reason: 'profile_write_failed', cleanup_succeeded: !cleanupError },
+        )
+        return jsonResponse(500, {
+          error: cleanupError
+            ? 'La création du profil et l’annulation du compte ont échoué; une intervention est requise.'
+            : 'La création du profil a échoué; le compte a été annulé.',
+        })
+      }
+
+      if (!await writeAdminAudit(adminClient, user.id, 'create_user', data.user.id, 'success')) {
+        return auditPendingResponse(request)
       }
     }
 

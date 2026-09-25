@@ -24,6 +24,8 @@ import FormateurAssignments from '../components/FormateurAssignments';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { getUserFacingError } from '../utils/userFacingError';
+import { logClientFailure } from '../utils/clientDiagnostics';
 import {
   cancelTrainingRegistration,
   getEventById,
@@ -41,6 +43,7 @@ import type {
 } from '../types';
 import { APP_ROUTES } from '../utils/constants';
 import { createCsv } from '../utils/csv';
+import { toMailtoRecipientList } from '../utils/emailDestinations';
 import { canContribute } from '../utils/permissions';
 
 const attendanceOptions: Array<{
@@ -99,12 +102,8 @@ export default function TrainingSessionDetail() {
         setParticipants(await listTrainingParticipants(id));
       }
     } catch (loadError) {
-      console.error(loadError);
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Impossible de charger cette session.'
-      );
+      logClientFailure('Chargement de la session de formation impossible');
+      setError(getUserFacingError(loadError, 'Impossible de charger cette session.'));
     } finally {
       setLoading(false);
     }
@@ -145,9 +144,7 @@ export default function TrainingSessionDetail() {
       await loadSession();
     } catch (registrationError) {
       showToast(
-        registrationError instanceof Error
-          ? registrationError.message
-          : 'Impossible de vous inscrire.',
+        getUserFacingError(registrationError, 'Impossible de vous inscrire.'),
         'error'
       );
     } finally {
@@ -168,9 +165,7 @@ export default function TrainingSessionDetail() {
       await loadSession();
     } catch (cancellationError) {
       showToast(
-        cancellationError instanceof Error
-          ? cancellationError.message
-          : 'Impossible d’annuler votre inscription.',
+        getUserFacingError(cancellationError, 'Impossible d’annuler votre inscription.'),
         'error'
       );
     } finally {
@@ -191,9 +186,7 @@ export default function TrainingSessionDetail() {
       await loadSession();
     } catch (capacityError) {
       showToast(
-        capacityError instanceof Error
-          ? capacityError.message
-          : 'Impossible de modifier la capacité.',
+        getUserFacingError(capacityError, 'Impossible de modifier la capacité.'),
         'error'
       );
     } finally {
@@ -218,9 +211,7 @@ export default function TrainingSessionDetail() {
       showToast(`Présence mise à jour pour ${participant.displayName}.`, 'success');
     } catch (attendanceError) {
       showToast(
-        attendanceError instanceof Error
-          ? attendanceError.message
-          : 'Impossible de mettre à jour la présence.',
+        getUserFacingError(attendanceError, 'Impossible de mettre à jour la présence.'),
         'error'
       );
     } finally {
@@ -435,16 +426,18 @@ export default function TrainingSessionDetail() {
         </section>
       ) : null}
 
-      {user?.isAdmin ? (
+      {canContribute(user) ? (
         <section className="space-y-4 border-t border-outline-variant pt-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-label-sm uppercase text-primary">Gestion responsable</p>
               <h2 className="mt-1 text-headline-lg text-on-surface">
-                Participants et présences
+                {user?.isAdmin ? 'Participants et présences' : 'Capacité de la session'}
               </h2>
               <p className="mt-1 text-body-md text-on-surface-variant">
-                Les coordonnées sont réservées aux responsables de la session.
+                {user?.isAdmin
+                  ? 'Les coordonnées sont réservées aux responsables de la session.'
+                  : 'Les contributeurs peuvent ajuster le planning sans accéder aux coordonnées des inscrits.'}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -469,36 +462,40 @@ export default function TrainingSessionDetail() {
                   Appliquer
                 </button>
               </form>
-              <button
-                type="button"
-                onClick={exportParticipants}
-                disabled={!participants.length}
-                className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-on-surface px-4 font-semibold text-white disabled:opacity-40"
-              >
-                <Download size={18} />
-                Exporter
-              </button>
+              {user?.isAdmin ? (
+                <button
+                  type="button"
+                  onClick={exportParticipants}
+                  disabled={!participants.length}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-on-surface px-4 font-semibold text-white disabled:opacity-40"
+                >
+                  <Download size={18} />
+                  Exporter
+                </button>
+              ) : null}
             </div>
           </div>
 
-          {participants.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-outline p-6 text-center text-body-md text-on-surface-variant">
-              Aucun participant inscrit.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {participants.map((participant) => (
-                <ParticipantRow
-                  key={participant.registrationId}
-                  participant={participant}
-                  busy={attendanceBusy === participant.registrationId}
-                  onAttendance={(attendance) =>
-                    handleAttendance(participant, attendance)
-                  }
-                />
-              ))}
-            </div>
-          )}
+          {user?.isAdmin ? (
+            participants.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-outline p-6 text-center text-body-md text-on-surface-variant">
+                Aucun participant inscrit.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {participants.map((participant) => (
+                  <ParticipantRow
+                    key={participant.registrationId}
+                    participant={participant}
+                    busy={attendanceBusy === participant.registrationId}
+                    onAttendance={(attendance) =>
+                      handleAttendance(participant, attendance)
+                    }
+                  />
+                ))}
+              </div>
+            )
+          ) : null}
         </section>
       ) : null}
 
@@ -596,6 +593,8 @@ function ParticipantRow({
   busy: boolean;
   onAttendance: (attendance: TrainingAttendanceStatus) => void;
 }) {
+  const mailtoRecipient = toMailtoRecipientList([participant.email]);
+
   return (
     <article className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -616,12 +615,14 @@ function ParticipantRow({
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-body-md text-on-surface-variant">
-            <a href={`mailto:${participant.email}`} className="inline-flex items-center gap-1.5">
-              <Mail size={15} />
-              {participant.email}
-            </a>
+            {mailtoRecipient && (
+              <a href={`mailto:${mailtoRecipient}`} className="inline-flex items-center gap-1.5">
+                <Mail size={15} />
+                {participant.email}
+              </a>
+            )}
             {participant.phone ? (
-              <a href={`tel:${participant.phone}`} className="inline-flex items-center gap-1.5">
+              <a href={`tel:${encodeURIComponent(participant.phone)}`} className="inline-flex items-center gap-1.5">
                 <Phone size={15} />
                 {participant.phone}
               </a>

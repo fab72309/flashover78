@@ -22,6 +22,7 @@ import {
   createDefaultFormEmailDestinations,
   formatEmailRecipients,
 } from '../utils/emailDestinations';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 type PdfAction = 'open' | 'download' | 'share';
 
@@ -42,8 +43,8 @@ export default function EquipmentRepairHistoryPanel({ userId }: { userId: string
       .then((records) => {
         if (isMounted) setItems(records);
       })
-      .catch((loadError) => {
-        console.error(loadError);
+      .catch(() => {
+        logClientFailure('Chargement de l’historique des réparations impossible');
         if (isMounted) setError(true);
       })
       .finally(() => {
@@ -69,7 +70,7 @@ export default function EquipmentRepairHistoryPanel({ userId }: { userId: string
   const handlePdfAction = async (record: EquipmentRepairRequestRecord, action: PdfAction) => {
     const actionKey = `${record.id}:${action}`;
     const previewWindow = action === 'open' && typeof window !== 'undefined'
-      ? window.open('', '_blank')
+      ? window.open('', '_blank', 'noopener,noreferrer')
       : null;
     setActiveAction(actionKey);
 
@@ -127,7 +128,7 @@ export default function EquipmentRepairHistoryPanel({ userId }: { userId: string
     } catch (actionError) {
       if (actionError instanceof DOMException && actionError.name === 'AbortError') return;
       previewWindow?.close();
-      console.error(actionError);
+      logClientFailure('Ouverture du PDF de réparation impossible');
       showToast('Impossible d’ouvrir ou de partager le PDF de cette demande.', 'error');
     } finally {
       setActiveAction(null);

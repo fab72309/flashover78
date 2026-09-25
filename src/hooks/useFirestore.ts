@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { listEvents, listResources } from '../services/supabaseService';
+import { getUserFacingError } from '../utils/userFacingError';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 async function resolveCollection<T>(collectionName: string): Promise<T[]> {
   switch (collectionName) {
@@ -30,9 +32,9 @@ export function useCollection<T>(collectionName: string) {
           setDocuments(results);
         }
       } catch (err) {
-        console.error('Error fetching collection:', err);
+        logClientFailure('Chargement d’une collection impossible');
         if (isMounted) {
-          setError(err instanceof Error ? err.message : 'Unknown error');
+          setError(getUserFacingError(err, 'Impossible de charger les données.'));
         }
       } finally {
         if (isMounted) {

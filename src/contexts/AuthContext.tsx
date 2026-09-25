@@ -4,7 +4,10 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import type { AppUser } from '../types';
 import { devUser, isDevAuthBypassEnabled } from '../utils/devAuth';
 import {
+  clearOfflineDocumentData,
+  enforceOfflineDocumentOwner,
   getCurrentUser,
+  resolveOfflineAppUser,
   resolveAppUser,
   signIn,
   signOut,
@@ -66,17 +69,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const [{ data: sessionData }, currentUser] = await Promise.all([
-        supabase.auth.getSession(),
-        getCurrentUser(),
-      ]);
+      const { data: sessionData } = await supabase.auth.getSession();
+      const localSession = sessionData.session;
+      const localSessionIsUsable = Boolean(
+        localSession &&
+        (!localSession.expires_at || localSession.expires_at * 1000 > Date.now()),
+      );
+
+      let currentUser: Awaited<ReturnType<typeof getCurrentUser>> = null;
+      try {
+        currentUser = await getCurrentUser();
+      } catch {
+        if (!localSessionIsUsable) {
+          await enforceOfflineDocumentOwner(null);
+          if (isMounted) {
+            setSession(null);
+            setUser(null);
+            setLoading(false);
+          }
+          return;
+        }
+
+        await enforceOfflineDocumentOwner(localSession!.user.id);
+        if (isMounted) {
+          setSession(localSession);
+          setUser(resolveOfflineAppUser(localSession!.user));
+          setLoading(false);
+        }
+        return;
+      }
 
       if (!isMounted) {
         return;
       }
 
-      setSession(sessionData.session);
-      setUser(await resolveAppUser(currentUser));
+      if (!currentUser || !localSessionIsUsable) {
+        await enforceOfflineDocumentOwner(null);
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      await enforceOfflineDocumentOwner(currentUser.id);
+      try {
+        setSession(localSession);
+        setUser(await resolveAppUser(currentUser));
+      } catch {
+        // A transient profile/RPC outage must not expose stale privileges.
+        setUser(resolveOfflineAppUser(currentUser));
+      }
       setLoading(false);
     };
 
@@ -86,10 +128,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = !isDevAuthBypassEnabled && isSupabaseConfigured
       ? supabase.auth.onAuthStateChange((_event, nextSession) => {
-          setSession(nextSession);
-          window.setTimeout(async () => {
-            const nextUser = await resolveAppUser(nextSession?.user ?? null);
+        window.setTimeout(async () => {
+            const nextSessionIsUsable = Boolean(
+              nextSession &&
+              (!nextSession.expires_at || nextSession.expires_at * 1000 > Date.now()),
+            );
+            if (!nextSessionIsUsable) {
+              await enforceOfflineDocumentOwner(null);
+              if (isMounted) {
+                setSession(null);
+                setUser(null);
+                setLoading(false);
+              }
+              return;
+            }
+
+            await enforceOfflineDocumentOwner(nextSession?.user.id ?? null);
+            let nextUser = resolveOfflineAppUser(nextSession?.user ?? null);
+            try {
+              nextUser = await resolveAppUser(nextSession?.user ?? null);
+            } catch {
+              // Keep the local session usable for cached documents, with a
+              // non-privileged fallback, until profile validation succeeds.
+            }
             if (isMounted) {
+              setSession(nextSession);
               setUser(nextUser);
               setLoading(false);
             }
@@ -152,14 +215,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshUser,
       logout: async () => {
         if (isDevAuthBypassEnabled) {
+          await clearOfflineDocumentData();
           setUser(devUser);
           setSession(null);
           return;
         }
 
-        await signOut();
-        setUser(null);
-        setSession(null);
+        try {
+          await signOut();
+        } finally {
+          setUser(null);
+          setSession(null);
+        }
       },
     }),
     [user, session, loading]

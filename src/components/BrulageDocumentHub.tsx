@@ -25,6 +25,7 @@ import {
   groupBrulageDocuments,
   type BrulageDocumentSectionId,
 } from '../utils/brulageDocuments';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 type DocumentViewMode = 'list' | 'grid';
 
@@ -60,8 +61,8 @@ export default function BrulageDocumentHub({
       const files = await searchDocuments({ category });
       setDocuments(files);
       setError(null);
-    } catch (loadError) {
-      console.error(loadError);
+    } catch {
+      logClientFailure('Chargement des documents de brûlage impossible');
       setError('Erreur lors du chargement des documents.');
     } finally {
       setLoading(false);

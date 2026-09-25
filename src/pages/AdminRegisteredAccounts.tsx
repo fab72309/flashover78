@@ -9,6 +9,7 @@ import { useToast } from '../contexts/ToastContext';
 import { deleteManagedUser, listManagedUsers } from '../services/supabaseService';
 import type { ManagedUser } from '../types';
 import { ROLE_LABELS } from '../utils/permissions';
+import { getUserFacingError } from '../utils/userFacingError';
 
 export default function AdminRegisteredAccounts() {
   const { user } = useAuth();
@@ -24,7 +25,7 @@ export default function AdminRegisteredAccounts() {
       setUsers(await listManagedUsers());
     } catch (error) {
       showToast(
-        error instanceof Error ? error.message : 'Impossible de charger les comptes.',
+        getUserFacingError(error, 'Impossible de charger les comptes.'),
         'error',
       );
     } finally {
@@ -64,7 +65,7 @@ export default function AdminRegisteredAccounts() {
       showToast(`Le compte de ${target.displayName} a été supprimé.`, 'success');
     } catch (error) {
       showToast(
-        error instanceof Error ? error.message : 'Impossible de supprimer ce compte.',
+        getUserFacingError(error, 'Impossible de supprimer ce compte.'),
         'error',
       );
     } finally {
