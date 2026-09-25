@@ -18,6 +18,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { listEvents } from '../services/supabaseService';
 import { listMyCarpoolPosts } from '../services/carpoolMobilityService';
 import type { CalendarEvent } from '../types';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 type InterfaceMode = 'mobile' | 'desktop';
 
@@ -118,8 +119,8 @@ function Home() {
           setUpcomingSessions(sessions);
           setPendingCarpoolRequests(pendingRequests);
         }
-      } catch (error) {
-        console.error(error);
+      } catch {
+        logClientFailure('Chargement de l’accueil impossible');
         if (isMounted) {
           setOverviewError(true);
         }

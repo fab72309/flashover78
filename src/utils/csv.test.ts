@@ -13,4 +13,15 @@ describe('createCsv', () => {
       '"\'=HYPERLINK(""x"")"'
     );
   });
+
+  it('neutralise aussi les contrôles initiaux et opérateurs pleine largeur', () => {
+    const csv = createCsv(
+      ['Valeur'],
+      [['\t=CMD()'], ['\r@SUM(1)'], ['＝HYPERLINK("x")']]
+    );
+
+    expect(csv).toContain('"\'\t=CMD()"');
+    expect(csv).toContain('"\'\r@SUM(1)"');
+    expect(csv).toContain('"\'＝HYPERLINK(""x"")"');
+  });
 });

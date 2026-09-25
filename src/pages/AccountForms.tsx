@@ -1,10 +1,17 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { updateUserEmail, updateUserPassword } from '../services/supabaseService';
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  validateNewPassword,
+} from '../utils/authRecovery';
+import { getUserFacingError } from '../utils/userFacingError';
 
 export function EmailUpdateForm() {
   const { user, refreshUser } = useAuth();
   const [email, setEmail] = useState(user?.email || '');
+  const [currentPassword, setCurrentPassword] = useState('');
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,11 +27,12 @@ export function EmailUpdateForm() {
         throw new Error('Utilisateur non authentifié');
       }
 
-      await updateUserEmail(email);
+      await updateUserEmail(email, currentPassword);
       await refreshUser();
       setSuccess('Email mis à jour. Vérifiez votre boîte mail si une confirmation est demandée.');
+      setCurrentPassword('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur lors de la mise à jour de l'email");
+      setError(getUserFacingError(err, "Erreur lors de la mise à jour de l'email"));
     } finally {
       setLoading(false);
     }
@@ -39,6 +47,17 @@ export function EmailUpdateForm() {
         <label className="block text-label-lg text-on-surface mb-1.5">Nouvel email</label>
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClasses} required />
       </div>
+      <div>
+        <label className="block text-label-lg text-on-surface mb-1.5">Mot de passe actuel</label>
+        <input
+          type="password"
+          value={currentPassword}
+          onChange={(event) => setCurrentPassword(event.target.value)}
+          autoComplete="current-password"
+          className={inputClasses}
+          required
+        />
+      </div>
       <button type="submit" className="btn-primary-gradient px-5 py-2.5 rounded-squircle-sm disabled:opacity-50" disabled={loading}>
         {loading ? 'Mise à jour...' : "Mettre à jour l'email"}
       </button>
@@ -50,7 +69,9 @@ export function EmailUpdateForm() {
 
 export function PasswordUpdateForm() {
   const { user } = useAuth();
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -66,11 +87,18 @@ export function PasswordUpdateForm() {
         throw new Error('Utilisateur non authentifié');
       }
 
-      await updateUserPassword(newPassword);
+      const validationError = validateNewPassword(newPassword, confirmation);
+      if (validationError) {
+        throw new Error(validationError);
+      }
+
+      await updateUserPassword(newPassword, currentPassword);
       setSuccess('Mot de passe mis à jour avec succès.');
+      setCurrentPassword('');
       setNewPassword('');
+      setConfirmation('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur lors de la mise à jour du mot de passe');
+      setError(getUserFacingError(err, 'Erreur lors de la mise à jour du mot de passe'));
     } finally {
       setLoading(false);
     }
@@ -82,6 +110,17 @@ export function PasswordUpdateForm() {
   return (
     <form onSubmit={handleUpdatePassword} className="space-y-4 max-w-md">
       <div>
+        <label className="block text-label-lg text-on-surface mb-1.5">Mot de passe actuel</label>
+        <input
+          type="password"
+          value={currentPassword}
+          onChange={(event) => setCurrentPassword(event.target.value)}
+          autoComplete="current-password"
+          className={inputClasses}
+          required
+        />
+      </div>
+      <div>
         <label className="block text-label-lg text-on-surface mb-1.5">Nouveau mot de passe</label>
         <input
           type="password"
@@ -89,7 +128,21 @@ export function PasswordUpdateForm() {
           onChange={(e) => setNewPassword(e.target.value)}
           className={inputClasses}
           required
-          minLength={6}
+          minLength={PASSWORD_MIN_LENGTH}
+          maxLength={PASSWORD_MAX_LENGTH}
+        />
+      </div>
+      <div>
+        <label className="block text-label-lg text-on-surface mb-1.5">Confirmer le nouveau mot de passe</label>
+        <input
+          type="password"
+          value={confirmation}
+          onChange={(event) => setConfirmation(event.target.value)}
+          autoComplete="new-password"
+          className={inputClasses}
+          required
+          minLength={PASSWORD_MIN_LENGTH}
+          maxLength={PASSWORD_MAX_LENGTH}
         />
       </div>
       <button type="submit" className="btn-primary-gradient px-5 py-2.5 rounded-squircle-sm disabled:opacity-50" disabled={loading}>

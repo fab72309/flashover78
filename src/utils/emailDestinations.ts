@@ -13,12 +13,15 @@ export interface FormEmailDestinations {
 }
 
 export const DEFAULT_FORM_EMAIL_DESTINATIONS: Readonly<Record<FormEmailDestinationKey, readonly string[]>> = {
-  mainCourante: ['flashover78@gmail.com'],
-  suiviMedical: ['flashover78@gmail.com'],
-  demandeReparation: ['flashover78@gmail.com'],
+  // Operational recipients are server-side configuration.  Keeping this
+  // fallback empty prevents member bundles and mailto links from exposing
+  // production addresses when the RLS-protected lookup is unavailable.
+  mainCourante: [],
+  suiviMedical: [],
+  demandeReparation: [],
 };
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_PATTERN = /^[^\s@]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 
 export function isValidEmailRecipient(value: string) {
   return EMAIL_PATTERN.test(value);
@@ -75,6 +78,18 @@ export function validateFormEmailDestinations(destinations: FormEmailDestination
 
 export function mergeEmailRecipients(...recipientLists: Array<readonly string[]>) {
   return normalizeEmailRecipients(recipientLists.flat());
+}
+
+/**
+ * Build only the recipient portion of a mailto URI. Recipients are validated
+ * before percent-encoding so an invalid value cannot add URI parameters or
+ * headers to the fallback mail client flow.
+ */
+export function toMailtoRecipientList(recipients: readonly string[]) {
+  return normalizeEmailRecipients(recipients)
+    .filter(isValidEmailRecipient)
+    .map((recipient) => encodeURIComponent(recipient))
+    .join(',');
 }
 
 export function formatEmailRecipients(recipients: readonly string[]) {

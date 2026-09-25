@@ -32,6 +32,8 @@ import {
   APP_ROUTES,
   RESOURCE_CATEGORY_LABELS,
 } from '../utils/constants';
+import { getUserFacingError } from '../utils/userFacingError';
+import { logClientFailure } from '../utils/clientDiagnostics';
 import {
   formatFileSize,
   getDocumentExpirationLabel,
@@ -65,8 +67,8 @@ export default function Resources() {
     try {
       const allDocuments = await searchDocuments();
       setCatalog(allDocuments);
-    } catch (catalogError) {
-      console.error(catalogError);
+    } catch {
+      logClientFailure('Chargement du catalogue documentaire impossible');
     }
   }, []);
 
@@ -83,12 +85,8 @@ export default function Resources() {
       });
       setDocuments(results);
     } catch (loadError) {
-      console.error(loadError);
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Impossible de charger les documents.'
-      );
+      logClientFailure('Chargement des documents impossible');
+      setError(getUserFacingError(loadError, 'Impossible de charger les documents.'));
     } finally {
       setLoading(false);
     }
@@ -144,9 +142,7 @@ export default function Resources() {
       }));
     } catch (favoriteError) {
       showToast(
-        favoriteError instanceof Error
-          ? favoriteError.message
-          : 'Impossible de modifier le favori.',
+        getUserFacingError(favoriteError, 'Impossible de modifier le favori.'),
         'error'
       );
     }
@@ -172,9 +168,7 @@ export default function Resources() {
       }
     } catch (offlineError) {
       showToast(
-        offlineError instanceof Error
-          ? offlineError.message
-          : 'Impossible de modifier la disponibilité hors ligne.',
+        getUserFacingError(offlineError, 'Impossible de modifier la disponibilité hors ligne.'),
         'error'
       );
     } finally {

@@ -1,5 +1,16 @@
 function protectSpreadsheetFormula(value: string) {
-  return /^[=+\-@]/.test(value.trimStart()) ? `'${value}` : value;
+  // Spreadsheet engines differ on which leading controls/Unicode operators
+  // they normalize before interpreting a cell as a formula.
+  let firstMeaningfulCharacter = 0;
+  while (
+    firstMeaningfulCharacter < value.length &&
+    value.charCodeAt(firstMeaningfulCharacter) <= 0x20
+  ) {
+    firstMeaningfulCharacter += 1;
+  }
+
+  const formulaPrefixes = new Set(['=', '+', '-', '@', '＝', '＋', '－', '＠']);
+  return formulaPrefixes.has(value[firstMeaningfulCharacter]) ? `'${value}` : value;
 }
 
 function escapeCsvCell(value: unknown) {

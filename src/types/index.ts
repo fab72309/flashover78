@@ -271,7 +271,7 @@ export interface CarpoolPost {
   matches: CarpoolMatch[];
 }
 
-export type EquipmentRepairRequestEmailStatus = 'pending' | 'sent' | 'failed';
+export type EquipmentRepairRequestEmailStatus = 'pending' | 'sending' | 'sent' | 'failed';
 export type EquipmentRepairRequestLocation =
   | 'Montigny le Bretonneux'
   | 'Poissy'
@@ -345,7 +345,7 @@ export type MedicalFollowUpBurningType =
 export type MedicalFollowUpAirDuration = '30' | '60' | '90';
 export type MedicalFollowUpYesNo = 'OUI' | 'NON';
 export type MedicalFollowUpShower = 'Oui' | 'Non';
-export type MedicalFollowUpEmailStatus = 'pending' | 'sent' | 'failed';
+export type MedicalFollowUpEmailStatus = 'pending' | 'sending' | 'sent' | 'failed';
 
 export interface MedicalFollowUpFormData {
   trainerLevel: TrainerLevel;
@@ -385,7 +385,7 @@ export interface MedicalFollowUpRecord extends MedicalFollowUpFormData {
   updatedAt: Date;
 }
 
-export type MainCouranteEmailStatus = 'pending' | 'sent' | 'failed';
+export type MainCouranteEmailStatus = 'pending' | 'sending' | 'sent' | 'failed';
 
 export type MainCouranteSite =
   | 'Montigny le Bretonneux'

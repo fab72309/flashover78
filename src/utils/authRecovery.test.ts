@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getEmailConfirmationRedirectUrl,
   getPasswordRecoveryRedirectUrl,
   getRecoveryLinkError,
   getRecoveryTokenHash,
@@ -13,12 +14,27 @@ describe('password recovery helpers', () => {
     );
   });
 
+  it('falls back to the canonical origin for untrusted previews', () => {
+    expect(getPasswordRecoveryRedirectUrl('https://preview.example.test')).toBe(
+      'https://app.flashover78.com/reset-password'
+    );
+    expect(getEmailConfirmationRedirectUrl('https://preview.example.test')).toBe(
+      'https://app.flashover78.com/login'
+    );
+  });
+
+  it('keeps local development origins available without accepting arbitrary hosts', () => {
+    expect(getEmailConfirmationRedirectUrl('http://localhost:5173/')).toBe(
+      'http://localhost:5173/login'
+    );
+  });
+
   it('validates password length and confirmation', () => {
-    expect(validateNewPassword('court', 'court')).toContain('au moins 6');
-    expect(validateNewPassword('nouveau-secret', 'autre-secret')).toBe(
+    expect(validateNewPassword('court', 'court')).toContain('au moins 15');
+    expect(validateNewPassword('nouveau-secret-long', 'autre-secret-long')).toBe(
       'Les mots de passe ne correspondent pas.'
     );
-    expect(validateNewPassword('nouveau-secret', 'nouveau-secret')).toBeNull();
+    expect(validateNewPassword('nouveau-secret-long', 'nouveau-secret-long')).toBeNull();
   });
 
   it('recognizes an expired recovery link error', () => {

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { requestPasswordReset } from '../services/supabaseService';
 import { useAppVersion } from '../hooks/useAppVersion';
 import { APP_ROUTES, LOGO_PATHS } from '../utils/constants';
+import { getUserFacingError } from '../utils/userFacingError';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -21,11 +22,7 @@ export default function ForgotPassword() {
       await requestPasswordReset(email);
       setSubmitted(true);
     } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Impossible d'envoyer l'email de réinitialisation."
-      );
+      setError(getUserFacingError(caughtError, "Impossible d'envoyer l'email de réinitialisation."));
     } finally {
       setLoading(false);
     }
