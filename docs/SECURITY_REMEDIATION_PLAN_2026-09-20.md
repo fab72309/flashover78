@@ -55,8 +55,10 @@ déploiement applicatif n'a été exécuté.
   domaine de production. Les previews sont maintenant protégées par Access.
   La production observée avant livraison ne renvoyait pas CSP/HSTS/frame
   protection et autorisait CORS `*`; `_headers` doit donc être livré et vérifié.
-- GitHub ne protège pas encore `main` et ne contient pas le workflow local tant
-  que la branche de sécurité n'est pas poussée.
+- GitHub protège maintenant `main` (check `check` obligatoire, historique
+  linéaire, pushes forcés/suppressions interdits et résolution obligatoire).
+  Le workflow local est passé sur la PR ; il sera disponible sur `main` après
+  fusion.
 
 ## Séquence d’exécution proposée
 

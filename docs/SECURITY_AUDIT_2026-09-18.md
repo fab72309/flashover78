@@ -58,10 +58,12 @@ aucune ligne métier, aucun chemin Storage et aucune valeur de secret.
   elle doit être revalidée sur un nouveau déploiement. Les variables publiques
   observées incluent `VITE_DEV_AUTH_BYPASS=false`, l'URL Supabase et la clé
   publishable/anon (valeurs non recopiées).
-- **GitHub.** La branche `main` n'a pas de protection distante et aucun
-  workflow n'est présent sur `main` ; le workflow local épinglé
-  `.github/workflows/security-check.yml` ne sera effectif qu'après push et
-  exécution réussie.
+- **GitHub.** La branche `main` est maintenant protégée : check `check`
+  obligatoire et strict, historique linéaire, administrateurs soumis aux
+  contrôles, pushes forcés et suppressions interdits, résolution des
+  conversations exigée. Le workflow épinglé
+  `.github/workflows/security-check.yml` a été poussé sur la branche de PR et
+  a réussi ; il sera présent sur `main` après fusion.
 
 Ces observations sont datées et ne valent que pour les lectures effectuées le
 25 septembre 2026 ; elles ne remplacent ni une recette avec comptes
@@ -275,7 +277,7 @@ confidentialité ou une action privilégiée hors du chemin audité.
 | B-09 | Faible | Corrigé localement | `admin-users` accepte page 1–1000 et 1–100 utilisateurs ; le client parcourt les pages jusqu'à `hasMore=false` | test Edge + build ; volume réel et comportement Auth distant non vérifiés |
 | B-10 | Moyenne | Corrigé localement, instance complète non vérifiable | une migration dédiée ajoute `private.has_active_session()` aux politiques RLS de lecture/écriture exposées ; les clauses obsolètes `news/news_reads` ont été retirées pour que la migration soit rejouable après leur suppression ; une session supprimée ne lit plus même un calendrier synthétique | appliquer `20260919090000_active_session_rls.sql` après inventaire des tokens et vérifier une instance Supabase complète |
 | B-11 | Moyenne | Corrigé localement, configuration distante non vérifiée | les cinq Edge Functions qui résolvent plusieurs clés n'acceptent plus la première valeur arbitraire d'un JSON ; une clé legacy ou `default` explicite est requise, sinon l'appel échoue fermé | `supabase/functions/_shared/config.ts`, `config.test.ts` ; build et tests Vitest | vérifier les secrets réellement configurés et leur correspondance au projet |
-| D-03 | Moyenne | Préparé localement | workflow CI avec permissions minimales, actions épinglées, Node 22, lint/tests/build/audit, CORS, finaliseur PDF, worker et harnais d'autorisation PGlite/Edge isolés | exécution GitHub et protections de branche non vérifiées |
+| D-03 | Moyenne | Partiellement vérifié | workflow CI avec permissions minimales, actions épinglées, Node 22, lint/tests/build/audit, CORS, finaliseur PDF, worker et harnais d'autorisation PGlite/Edge isolés | PR de sécurité validée par CI et `main` protégée ; workflow encore absent du commit de production jusqu'à fusion |
 | D-04 | Moyenne | Corrigé localement, navigateur réel non vérifié | une durée maximale locale de 24 h est appliquée aux documents explicitement mis en cache ; les octets et l’index de métadonnées sont chiffrés AES-GCM avec une clé non exportable par compte ; une revalidation Auth (`getUser` + `require_active_session`) est exigée avant restitution lorsque le navigateur est en ligne ; par définition, un appareil réellement hors ligne ne peut toujours pas apprendre une révocation distante pendant cette fenêtre | vérifier un navigateur réel, le support IndexedDB/WebCrypto et le compromis de révocation hors ligne |
 | OPS-01 | Élevée non vérifiable | Ouvert | sauvegarde, restauration, alertes, quotas, rate limits, CAPTCHA, JWT et réponse à incident inconnus | contrôle distant autorisé + exercice de restauration |
 
@@ -429,8 +431,9 @@ Les lectures du 25 septembre 2026 sont limitées aux métadonnées et compteurs 
 - Cloudflare Pages : dépôt GitHub relié, production `main`, build `npm run
   build`/`dist`, previews restreintes par Access après activation, mais headers
   de sécurité absents de la production observée avant livraison ;
-- GitHub : branche `main` non protégée et aucun workflow distant au moment du
-  contrôle ; le workflow local doit encore être poussé et exécuté.
+- GitHub : `main` protégée par le check strict `check`, historique linéaire,
+  interdiction des pushes forcés/suppressions et résolution obligatoire ; le
+  workflow de sécurité de la PR a réussi, mais n'est pas encore dans `main`.
 
 Ces résultats ne constituent pas une preuve d'intégrité des contenus de fichiers,
 de conformité Brevo, de réglage Auth complet ou de restauration. Toute valeur de
