@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
+import { logClientFailure } from './utils/clientDiagnostics';
 
 // Avoid stale PWA caches during local development.
 if (import.meta.env.DEV && 'serviceWorker' in navigator) {
@@ -17,9 +18,9 @@ if (import.meta.env.DEV && 'serviceWorker' in navigator) {
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(registration => {
-      console.log('SW registered: ', registration);
-    }).catch(registrationError => {
-      console.log('SW registration failed: ', registrationError);
+      void registration;
+    }).catch(() => {
+      logClientFailure('Enregistrement du Service Worker impossible');
     });
   });
 }
@@ -27,7 +28,7 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 const rootElement = document.getElementById('root');
 const bootStatus = document.getElementById('boot-status');
 
-function showBootError(message: string) {
+function showBootError() {
   if (!bootStatus) {
     return;
   }
@@ -43,17 +44,14 @@ function showBootError(message: string) {
   copy.className = 'boot-copy';
   copy.textContent = 'Le chargement du module principal a échoué.';
 
-  const details = document.createElement('div');
-  details.className = 'boot-error';
-  details.textContent = message;
-
-  card.append(title, copy, details);
+  card.append(title, copy);
   bootStatus.replaceChildren(card);
 }
 
 async function startApp() {
   if (!rootElement) {
-    showBootError('Root element introuvable.');
+    console.error('Application bootstrap failed: root element missing');
+    showBootError();
     return;
   }
 
@@ -68,9 +66,9 @@ async function startApp() {
     if (bootStatus) {
       bootStatus.remove();
     }
-  } catch (error) {
-    console.error('Application bootstrap failed:', error);
-    showBootError(error instanceof Error ? error.message : String(error));
+  } catch {
+    logClientFailure('Initialisation de l’application impossible');
+    showBootError();
   }
 }
 

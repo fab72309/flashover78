@@ -28,6 +28,8 @@ import {
 } from '../utils/equipmentRepairRequest';
 import { renderEquipmentRepairRequestPdf } from '../utils/equipmentRepairRequestPdf';
 import { APP_ROUTES } from '../utils/constants';
+import { getUserFacingError } from '../utils/userFacingError';
+import { logClientFailure } from '../utils/clientDiagnostics';
 import {
   createDefaultFormEmailDestinations,
   formatEmailRecipients,
@@ -162,7 +164,9 @@ export default function EquipmentRepairRequest() {
       return;
     }
 
-    const previewWindow = typeof window !== 'undefined' ? window.open('', '_blank') : null;
+    const previewWindow = typeof window !== 'undefined'
+      ? window.open('', '_blank', 'noopener,noreferrer')
+      : null;
     setSubmitting(true);
     let pdfOpened = false;
 
@@ -182,10 +186,10 @@ export default function EquipmentRepairRequest() {
         result.deliveryStatus === 'sent' ? 'success' : 'info',
       );
     } catch (error) {
-      console.error(error);
+      logClientFailure('Génération du PDF de réparation impossible');
       previewWindow?.close();
       showToast(
-        error instanceof Error ? error.message : 'Impossible de générer et d’enregistrer la demande de réparation.',
+        getUserFacingError(error, 'Impossible de générer et d’enregistrer la demande de réparation.'),
         'error',
       );
     } finally {
@@ -251,7 +255,7 @@ export default function EquipmentRepairRequest() {
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
-      console.error(error);
+      logClientFailure('Partage de la demande de réparation impossible');
       showToast('L’envoi ou le partage de la demande n’a pas abouti.', 'error');
     }
   };

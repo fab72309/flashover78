@@ -24,6 +24,7 @@ import {
 import {
   DEFAULT_FORM_EMAIL_DESTINATIONS,
   mergeEmailRecipients,
+  toMailtoRecipientList,
 } from './emailDestinations';
 import { MEDICAL_FOLLOWUP_OPTIONS } from './medicalFollowUp';
 
@@ -286,7 +287,7 @@ export function openMainCourantePdf(
   const openedWindow = targetWindow && !targetWindow.closed
     ? targetWindow
     : targetWindow === undefined
-      ? window.open('', '_blank')
+      ? window.open('', '_blank', 'noopener,noreferrer')
       : null;
 
   if (!openedWindow) {
@@ -337,6 +338,6 @@ export async function shareMainCourantePdf(
   const body = encodeURIComponent(
     `Bonjour,\n\nVeuillez trouver en pièce jointe la main courante.\n\nLa main courante a été téléchargée sous le nom « ${filename} ». Ajoutez ce fichier avant l’envoi.`,
   );
-  window.location.href = `mailto:${effectiveRecipients.join(',')}?subject=${subject}&body=${body}`;
+  window.location.href = `mailto:${toMailtoRecipientList(effectiveRecipients)}?subject=${subject}&body=${body}`;
   return 'downloaded' as const;
 }

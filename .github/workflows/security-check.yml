@@ -1,0 +1,71 @@
+name: Security checks
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint, tests and build
+        run: npm run check
+
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
+      - name: Edge authorization harness
+        run: >-
+          node --test
+          supabase/tests/admin-api-check.mjs
+          supabase/tests/email-functions-check.mjs
+          supabase/tests/medical-email-server-pdf-check.mjs
+          supabase/tests/cors-check.mjs
+          supabase/tests/store-form-pdf-check.mjs
+          supabase/tests/store-document-check.mjs
+          supabase/tests/storage-cleanup-worker-check.mjs
+          supabase/tests/query-bounds-check.mjs
+
+      - name: Install isolated PostgreSQL harness
+        run: npm install --prefix /tmp/flashover-mfa-db-test --no-audit --no-fund @electric-sql/pglite@0.5.8
+
+      - name: Database authorization harnesses
+        run: >-
+          PGLITE_MODULE=/tmp/flashover-mfa-db-test/node_modules/@electric-sql/pglite/dist/index.js
+          node --test
+          supabase/tests/admin-mfa-check.mjs
+          supabase/tests/security-hardening-check.mjs
+          supabase/tests/active-session-rls-check.mjs
+          supabase/tests/rpc-active-session-check.mjs
+          supabase/tests/storage-lifecycle-check.mjs
+          supabase/tests/document-storage-finalization-check.mjs
+          supabase/tests/document-contributor-publish-check.mjs
+          supabase/tests/trainer-level-default-check.mjs
+          supabase/tests/email-destinations-rls-check.mjs
+          supabase/tests/training-planning-member-view-check.mjs
+          supabase/tests/input-bounds-check.mjs
+          supabase/tests/storage-cleanup-worker-db-check.mjs
+          supabase/tests/carpool-lock-order-check.mjs
+          supabase/tests/global-email-rate-limit-check.mjs
+          supabase/tests/query-bounds-sql-check.mjs

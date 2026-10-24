@@ -37,6 +37,9 @@ import {
   getCarpoolPostKindLabel,
   getCarpoolPostStatusLabel,
 } from '../utils/statusLabels';
+import { getUserFacingError } from '../utils/userFacingError';
+import { logClientFailure } from '../utils/clientDiagnostics';
+import { toMailtoRecipientList } from '../utils/emailDestinations';
 
 function postStatusClass(status: CarpoolPost['status']) {
   switch (status) {
@@ -123,8 +126,8 @@ export default function CarpoolPostDetail() {
         setContacts([]);
       }
     } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'Impossible de charger la publication');
+      logClientFailure('Chargement de la publication de covoiturage impossible');
+      setError(getUserFacingError(err, 'Impossible de charger la publication'));
     } finally {
       setLoading(false);
     }
@@ -166,8 +169,8 @@ export default function CarpoolPostDetail() {
       await loadPost();
       showToast('Votre besoin et la demande de correspondance ont été envoyés.', 'success');
     } catch (err) {
-      console.error(err);
-      showToast(err instanceof Error ? err.message : 'Impossible d’envoyer cette demande.', 'error');
+      logClientFailure('Envoi de la demande de covoiturage impossible');
+      showToast(getUserFacingError(err, 'Impossible d’envoyer cette demande.'), 'error');
     } finally {
       setSaving(false);
     }
@@ -201,8 +204,8 @@ export default function CarpoolPostDetail() {
       await loadPost();
       showToast('Votre proposition a été envoyée au demandeur.', 'success');
     } catch (err) {
-      console.error(err);
-      showToast(err instanceof Error ? err.message : 'Impossible d’envoyer cette proposition.', 'error');
+      logClientFailure('Envoi de la proposition de covoiturage impossible');
+      showToast(getUserFacingError(err, 'Impossible d’envoyer cette proposition.'), 'error');
     } finally {
       setSaving(false);
     }
@@ -215,8 +218,8 @@ export default function CarpoolPostDetail() {
       await loadPost();
       showToast(status === 'accepted' ? 'Correspondance validée.' : 'Proposition refusée.', 'success');
     } catch (err) {
-      console.error(err);
-      showToast(err instanceof Error ? err.message : 'Impossible de traiter cette proposition.', 'error');
+      logClientFailure('Traitement de la proposition de covoiturage impossible');
+      showToast(getUserFacingError(err, 'Impossible de traiter cette proposition.'), 'error');
     } finally {
       setSaving(false);
     }
@@ -229,8 +232,8 @@ export default function CarpoolPostDetail() {
       await loadPost();
       showToast('Correspondance annulée.', 'success');
     } catch (err) {
-      console.error(err);
-      showToast(err instanceof Error ? err.message : 'Impossible d’annuler la correspondance.', 'error');
+      logClientFailure('Annulation de la correspondance de covoiturage impossible');
+      showToast(getUserFacingError(err, 'Impossible d’annuler la correspondance.'), 'error');
     } finally {
       setSaving(false);
     }
@@ -249,8 +252,8 @@ export default function CarpoolPostDetail() {
       }
       await loadPost();
     } catch (err) {
-      console.error(err);
-      showToast(err instanceof Error ? err.message : 'Impossible de modifier la publication.', 'error');
+      logClientFailure('Modification de la publication de covoiturage impossible');
+      showToast(getUserFacingError(err, 'Impossible de modifier la publication.'), 'error');
     } finally {
       setSaving(false);
     }
@@ -479,15 +482,18 @@ export default function CarpoolPostDetail() {
           </div>
           <p className="text-body-md text-on-surface-variant mt-1">Ces informations sont visibles uniquement parce qu’une correspondance a été validée.</p>
           <div className="grid gap-3 md:grid-cols-2 mt-4">
-            {acceptedContacts.map((contact) => (
-              <div key={contact.userId} className="rounded-squircle-sm bg-surface-container p-4">
-                <div className="text-body-lg font-semibold text-on-surface">{getContactName(contact.userId, post)}</div>
-                <div className="flex flex-wrap gap-3 mt-2 text-body-md text-on-surface-variant">
-                  {contact.email && <a href={`mailto:${contact.email}`} className="inline-flex items-center gap-1 hover:text-primary"><Mail size={15} />{contact.email}</a>}
-                  {contact.phone && <a href={`tel:${contact.phone}`} className="inline-flex items-center gap-1 hover:text-primary"><Phone size={15} />{contact.phone}</a>}
+            {acceptedContacts.map((contact) => {
+              const mailtoRecipient = contact.email ? toMailtoRecipientList([contact.email]) : '';
+              return (
+                <div key={contact.userId} className="rounded-squircle-sm bg-surface-container p-4">
+                  <div className="text-body-lg font-semibold text-on-surface">{getContactName(contact.userId, post)}</div>
+                  <div className="flex flex-wrap gap-3 mt-2 text-body-md text-on-surface-variant">
+                    {mailtoRecipient && <a href={`mailto:${mailtoRecipient}`} className="inline-flex items-center gap-1 hover:text-primary"><Mail size={15} />{contact.email}</a>}
+                    {contact.phone && <a href={`tel:${encodeURIComponent(contact.phone)}`} className="inline-flex items-center gap-1 hover:text-primary"><Phone size={15} />{contact.phone}</a>}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}

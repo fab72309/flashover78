@@ -1,10 +1,11 @@
-const CACHE_NAME = 'flashover78-v3';
+const CACHE_NAME = 'flashover78-v4';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.json',
   '/images/logo-sapeurs-pompiers.png'
 ];
+const STATIC_ASSET_PATTERN = /\.(?:css|js|json|webmanifest|png|jpe?g|gif|svg|ico|webp|woff2?|ttf)$/i;
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -40,6 +41,13 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // Only cache immutable/static application assets. In particular, never
+  // cache a same-origin API, function, auth or future private route by
+  // accident; private documents have their own account-bound cache lifecycle.
+  if (!STATIC_ASSET_PATTERN.test(url.pathname)) {
+    return;
+  }
+
   event.respondWith(
     caches.match(request).then(cachedResponse => {
       if (cachedResponse) {
@@ -70,7 +78,11 @@ self.addEventListener('activate', event => {
     caches.keys()
       .then(cacheNames => Promise.all(
         cacheNames
-          .filter(cacheName => cacheName !== CACHE_NAME)
+          // Only rotate application-shell caches. Private offline documents
+          // have their own lifecycle and are erased on logout/account change.
+          .filter(cacheName =>
+            cacheName.startsWith('flashover78-v') && cacheName !== CACHE_NAME
+          )
           .map(cacheName => caches.delete(cacheName))
       ))
       .then(() => self.clients.claim())

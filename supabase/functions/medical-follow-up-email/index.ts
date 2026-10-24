@@ -1,61 +1,42 @@
 import { escapeHtml } from '../_shared/html.ts'
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { sanitizePdf } from '../_shared/pdfSanitizer.ts'
+import { renderMedicalFollowUpPdf } from '../_shared/medicalPdf.ts'
+import { getConfiguredKey } from '../_shared/config.ts'
+import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
 import {
   describeBrevoFailure,
   sanitizeEmailSubject,
   sendBrevoEmail,
 } from '../_shared/brevo.ts'
+import {
+  corsHeadersForRequest,
+  preflightResponse,
+  rejectDisallowedOrigin,
+} from '../_shared/cors.ts'
 
 const DEFAULT_ADMIN_EMAILS = ['flashover78@gmail.com']
-const MAX_DOCUMENT_BASE64_LENGTH = 8_000_000
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// The endpoint now receives only a submission id and a boolean. Keep a small
+// envelope limit so callers cannot use it as an arbitrary body sink.
+const MAX_REQUEST_BYTES = 64 * 1024
+const EMAIL_PATTERN = /^[^\s@]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-function jsonResponse(status: number, body: unknown) {
+function baseJsonResponse(status: number, body: unknown, request?: Request) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
-      ...corsHeaders,
+      ...corsHeadersForRequest(request),
       'Content-Type': 'application/json',
     },
   })
 }
 
-function getConfiguredKey(legacyName: string, namedKeysName: string) {
-  const legacyKey = Deno.env.get(legacyName)?.trim()
-  if (legacyKey) return legacyKey
-
-  const namedKeys = Deno.env.get(namedKeysName)
-  if (!namedKeys) return ''
-
-  try {
-    const parsed = JSON.parse(namedKeys) as Record<string, unknown>
-    const defaultKey = typeof parsed.default === 'string' ? parsed.default : ''
-    if (defaultKey) return defaultKey
-    const firstKey = Object.values(parsed).find((value): value is string => typeof value === 'string')
-    return firstKey ?? ''
-  } catch {
-    return ''
+function encodeBytesToBase64(bytes: Uint8Array) {
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
   }
-}
-
-
-function normalizeFilename(value: unknown) {
-  const candidate = String(value ?? '').trim()
-  if (!candidate || candidate.length > 180 || !/^[a-zA-Z0-9._-]+\.pdf$/.test(candidate)) {
-    return 'suivi-medical-formateur.pdf'
-  }
-  return candidate
-}
-
-function isBase64(value: string) {
-  return value.length > 0
-    && value.length <= MAX_DOCUMENT_BASE64_LENGTH
-    && /^[A-Za-z0-9+/]+={0,2}$/.test(value)
+  return btoa(binary)
 }
 
 async function updateEmailStatus(
@@ -96,8 +77,22 @@ async function getConfiguredMedicalRecipients(adminClient: ReturnType<typeof cre
 }
 
 Deno.serve(async (request) => {
+  const originRejection = rejectDisallowedOrigin(request)
+  if (originRejection) return originRejection
+
+  const jsonResponse = (status: number, body: unknown) => baseJsonResponse(status, body, request)
+
   if (request.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return preflightResponse(request)
+  }
+
+  if (request.method !== 'POST') {
+    return jsonResponse(405, { error: 'Méthode non autorisée.' })
+  }
+
+  const contentLength = Number(request.headers.get('content-length') ?? '0')
+  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+    return jsonResponse(413, { error: 'Requête trop volumineuse.' })
   }
 
   const authorization = request.headers.get('Authorization')
@@ -126,30 +121,50 @@ Deno.serve(async (request) => {
     return jsonResponse(401, { error: 'Session invalide.' })
   }
 
+  // Do not spend CPU decoding or sanitizing a document for a JWT whose Auth
+  // session has already been revoked. This is intentionally checked before
+  // parsing the caller-controlled payload.
+  const { data: activeSession, error: activeSessionError } = await userClient.rpc(
+    'require_active_session',
+  )
+  if (activeSessionError || activeSession !== true) {
+    return jsonResponse(401, { error: 'Session invalide ou révoquée.' })
+  }
+
   let payload: Record<string, unknown>
   try {
-    payload = await request.json()
+    const body = await request.text()
+    if (new TextEncoder().encode(body).byteLength > MAX_REQUEST_BYTES) {
+      return jsonResponse(413, { error: 'Requête trop volumineuse.' })
+    }
+    payload = JSON.parse(body)
   } catch {
     return jsonResponse(400, { error: 'Requête invalide.' })
   }
 
   const submissionId = String(payload.submissionId ?? '').trim()
-  const documentBase64 = String(payload.documentBase64 ?? '').trim()
-  const filename = normalizeFilename(payload.filename)
   const isEvolution = payload.isEvolution === true
-
-  if (!submissionId || !isBase64(documentBase64)) {
+  if (!/^[0-9a-f-]{36}$/i.test(submissionId)) {
     return jsonResponse(400, { error: 'La fiche à envoyer est invalide.' })
   }
 
   const { data: submission, error: submissionError } = await userClient
     .from('medical_follow_ups')
-    .select('id, user_id, trainer_level, nom_formateur, prenom_formateur, date_formation, email_status')
+    .select(`
+      id, user_id, trainer_level, nom_formateur, prenom_formateur, email_formateur,
+      date_formation, journee, conditions_meteo, temperature,
+      hydratation_avant_bruleage, hydratation_apres_bruleage,
+      lieu_formation, lieu_formation_autre, formation, formation_autre,
+      role_formateur, role_formateur_autre, type_bruleage, type_bruleage_autre,
+      temps_ari, decontamination_post_bruleage, douche_dans_heure,
+      observations_post_bruleage, observations_post_bruleage_autre, observations,
+      email_status
+    `)
     .eq('id', submissionId)
     .maybeSingle()
 
   if (submissionError) {
-    return jsonResponse(500, { error: submissionError.message })
+    return jsonResponse(500, { error: 'Impossible de vérifier le suivi médical.' })
   }
 
   if (!submission || submission.user_id !== user.id) {
@@ -160,9 +175,47 @@ Deno.serve(async (request) => {
     return jsonResponse(200, { status: 'sent', alreadySent: true })
   }
 
+  let sanitizedBytes: Uint8Array
+  try {
+    // The attachment is generated from the row read through the caller's RLS
+    // context. No caller-supplied PDF bytes or filename are trusted anymore.
+    const generatedBytes = await renderMedicalFollowUpPdf(submission, isEvolution)
+    const sanitized = await sanitizePdf(generatedBytes)
+    if (!sanitized) {
+      return jsonResponse(422, { error: 'Le PDF médical ne peut pas être transmis de manière sûre.' })
+    }
+    sanitizedBytes = sanitized
+  } catch {
+    return jsonResponse(422, { error: 'Le PDF médical ne peut pas être généré de manière sûre.' })
+  }
+
+  const filename = `suivi-medical-${submission.date_formation}${isEvolution ? '-evolution' : ''}.pdf`
+
   const recipientEmail = user.email?.trim().toLowerCase()
   if (!recipientEmail) {
     return jsonResponse(400, { error: 'Adresse email utilisateur introuvable.' })
+  }
+
+  const { data: claimed, error: claimError } = await userClient.rpc(
+    'claim_form_email_delivery',
+    {
+      p_form_key: 'suivi_medical',
+      p_submission_id: submissionId,
+      p_allow_resend: false,
+    },
+  )
+  if (claimError) {
+    const rateLimited = /rate limit/i.test(claimError.message ?? '')
+    return jsonResponse(rateLimited ? 429 : 500, {
+      error: rateLimited
+        ? 'La limite horaire d’envoi est atteinte.'
+        : 'Impossible de réserver cet envoi.',
+    })
+  }
+  if (claimed !== true) {
+    return jsonResponse(409, {
+      error: 'Cet envoi est déjà en cours ou sa limite de tentatives est atteinte.',
+    })
   }
 
   const configuredRecipients = await getConfiguredMedicalRecipients(adminClient)
@@ -195,7 +248,7 @@ Deno.serve(async (request) => {
     htmlContent: html,
     replyTo: recipientEmail,
     attachment: {
-      content: documentBase64,
+      content: encodeBytesToBase64(sanitizedBytes),
       name: filename,
     },
   })

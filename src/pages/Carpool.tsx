@@ -31,6 +31,8 @@ import {
 } from '../services/carpoolMobilityService';
 import { APP_ROUTES } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
+import { getUserFacingError } from '../utils/userFacingError';
+import { logClientFailure } from '../utils/clientDiagnostics';
 import {
   getCarpoolPostKindLabel,
   getCarpoolPostStatusLabel,
@@ -127,8 +129,8 @@ export default function Carpool() {
       setPosts(postRows);
       setMyPosts(myPostRows);
     } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'Erreur lors du chargement des publications');
+      logClientFailure('Chargement des publications de covoiturage impossible');
+      setError(getUserFacingError(err, 'Erreur lors du chargement des publications'));
     } finally {
       setLoading(false);
     }
@@ -229,8 +231,8 @@ export default function Carpool() {
       await loadData();
       showToast(postForm.kind === 'offer' ? 'Offre de places publiée.' : 'Besoin de trajet publié.', 'success');
     } catch (err) {
-      console.error(err);
-      showToast(err instanceof Error ? err.message : 'Impossible de publier cette mobilité.', 'error');
+      logClientFailure('Publication de covoiturage impossible');
+      showToast(getUserFacingError(err, 'Impossible de publier cette mobilité.'), 'error');
     } finally {
       setSaving(false);
     }

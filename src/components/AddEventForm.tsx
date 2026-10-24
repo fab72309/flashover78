@@ -13,6 +13,8 @@ import {
 import { useToast } from '../contexts/ToastContext';
 import type { CalendarEvent, CalendarFormateurAssignment, Profile, TrainerLevel } from '../types';
 import SearchableFormateurSelect from './SearchableFormateurSelect';
+import { getUserFacingError } from '../utils/userFacingError';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 interface AddEventFormProps {
   onSuccess?: () => void;
@@ -97,9 +99,7 @@ export default function AddEventForm({ onSuccess, event }: AddEventFormProps) {
           setProfiles(nextProfiles);
         }
       } catch (error) {
-        const message = error instanceof Error
-          ? error.message
-          : 'Impossible de charger les fonctions formateur.';
+        const message = getUserFacingError(error, 'Impossible de charger les fonctions formateur.');
         if (isMounted) {
           setProfilesError(message);
           showToast(message, 'error');
@@ -195,8 +195,8 @@ export default function AddEventForm({ onSuccess, event }: AddEventFormProps) {
       showToast(event ? 'Événement mis à jour.' : 'Événement ajouté au calendrier.', 'success');
       onSuccess?.();
     } catch (error) {
-      console.error('Error adding event:', error);
-      showToast(error instanceof Error ? error.message : "Erreur lors de l'ajout de l'événement", 'error');
+      logClientFailure('Enregistrement de la session impossible');
+      showToast(getUserFacingError(error, "Erreur lors de l'ajout de l'événement"), 'error');
     } finally {
       setLoading(false);
     }

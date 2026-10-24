@@ -10,6 +10,8 @@ import { listEvents, listResources } from '../services/supabaseService';
 import { listCarpoolPosts, listMyCarpoolPosts } from '../services/carpoolMobilityService';
 import type { CalendarEvent, CarpoolPost, Resource } from '../types';
 import { APP_ROUTES } from '../utils/constants';
+import { getUserFacingError } from '../utils/userFacingError';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 interface DashboardData {
   events: CalendarEvent[];
@@ -49,8 +51,8 @@ function Dashboard() {
       ]);
       setData({ events, posts, myPosts, resources });
     } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'Impossible de charger le tableau de bord');
+      logClientFailure('Chargement du tableau de bord impossible');
+      setError(getUserFacingError(err, 'Impossible de charger le tableau de bord'));
     } finally {
       setLoading(false);
     }

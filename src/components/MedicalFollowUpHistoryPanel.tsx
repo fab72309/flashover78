@@ -23,6 +23,7 @@ import {
   formatEmailRecipients,
   mergeEmailRecipients,
 } from '../utils/emailDestinations';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 type PdfAction = 'open' | 'download' | 'share';
 
@@ -34,6 +35,7 @@ function getRemainingLabel(record: MedicalFollowUpRecord) {
 
 function getEmailLabel(record: MedicalFollowUpRecord) {
   if (record.emailStatus === 'sent') return 'Email envoyé';
+  if (record.emailStatus === 'sending') return 'Envoi en cours';
   if (record.emailStatus === 'failed') return 'Email à vérifier';
   return 'Email en attente';
 }
@@ -56,8 +58,8 @@ export default function MedicalFollowUpHistoryPanel({ userId }: { userId: string
       .then((records) => {
         if (isMounted) setItems(records);
       })
-      .catch((loadError) => {
-        console.error(loadError);
+      .catch(() => {
+        logClientFailure('Chargement de l’historique médical impossible');
         if (isMounted) setError(true);
       })
       .finally(() => {
@@ -83,7 +85,7 @@ export default function MedicalFollowUpHistoryPanel({ userId }: { userId: string
   const handlePdfAction = async (record: MedicalFollowUpRecord, action: PdfAction) => {
     const actionKey = `${record.id}:${action}`;
     const previewWindow = action === 'open' && typeof window !== 'undefined'
-      ? window.open('', '_blank')
+      ? window.open('', '_blank', 'noopener,noreferrer')
       : null;
     const isEvolution = isMedicalFollowUpEvolution(record);
     const filename = getMedicalFollowUpFilename(record, isEvolution);
@@ -119,7 +121,7 @@ export default function MedicalFollowUpHistoryPanel({ userId }: { userId: string
     } catch (actionError) {
       if (actionError instanceof DOMException && actionError.name === 'AbortError') return;
       previewWindow?.close();
-      console.error(actionError);
+      logClientFailure('Ouverture du PDF médical impossible');
       showToast('Impossible d’ouvrir ou de partager le PDF de ce suivi médical.', 'error');
     } finally {
       setActiveAction(null);

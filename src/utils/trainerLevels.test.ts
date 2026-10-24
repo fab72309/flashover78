@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { normalizeTrainerLevels, sortTrainerAssignments } from './trainerLevels';
 
 describe('trainer levels', () => {
-  it('defaults existing or incomplete profiles to RSFR', () => {
-    expect(normalizeTrainerLevels(undefined)).toEqual(['RSFR']);
-    expect(normalizeTrainerLevels([])).toEqual(['RSFR']);
-    expect(normalizeTrainerLevels(['unknown'])).toEqual(['RSFR']);
+  it('keeps new or incomplete profiles unqualified until an administrator assigns a level', () => {
+    expect(normalizeTrainerLevels(undefined)).toEqual([]);
+    expect(normalizeTrainerLevels([])).toEqual([]);
+    expect(normalizeTrainerLevels(['unknown'])).toEqual([]);
   });
 
   it('keeps multiple functions in the declared hierarchy', () => {

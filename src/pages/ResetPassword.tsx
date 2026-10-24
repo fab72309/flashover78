@@ -13,10 +13,12 @@ import { useAppVersion } from '../hooks/useAppVersion';
 import {
   getRecoveryLinkError,
   getRecoveryTokenHash,
+  PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   validateNewPassword,
 } from '../utils/authRecovery';
 import { APP_ROUTES, LOGO_PATHS } from '../utils/constants';
+import { getUserFacingError } from '../utils/userFacingError';
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -109,11 +111,7 @@ export default function ResetPassword() {
       setRecoverySession(null);
       setCompleted(true);
     } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : 'Impossible de modifier le mot de passe.'
-      );
+      setError(getUserFacingError(caughtError, 'Impossible de modifier le mot de passe.'));
     } finally {
       setLoading(false);
     }
@@ -127,11 +125,7 @@ export default function ResetPassword() {
       await cancelPasswordRecovery();
       navigate(APP_ROUTES.LOGIN, { replace: true });
     } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : 'Impossible de fermer la session de récupération.'
-      );
+      setError(getUserFacingError(caughtError, 'Impossible de fermer la session de récupération.'));
       setLoading(false);
     }
   };
@@ -209,6 +203,7 @@ export default function ResetPassword() {
                   onChange={(event) => setPassword(event.target.value)}
                   autoComplete="new-password"
                   minLength={PASSWORD_MIN_LENGTH}
+                  maxLength={PASSWORD_MAX_LENGTH}
                   className="w-full rounded-squircle-sm bg-surface-container-highest py-3 pl-10 pr-3 text-body-lg text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
                   required
                 />
@@ -231,6 +226,7 @@ export default function ResetPassword() {
                   onChange={(event) => setConfirmation(event.target.value)}
                   autoComplete="new-password"
                   minLength={PASSWORD_MIN_LENGTH}
+                  maxLength={PASSWORD_MAX_LENGTH}
                   className="w-full rounded-squircle-sm bg-surface-container-highest py-3 pl-10 pr-3 text-body-lg text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
                   required
                 />

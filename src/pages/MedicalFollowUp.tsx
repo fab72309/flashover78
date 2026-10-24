@@ -34,6 +34,8 @@ import {
   formatEmailRecipients,
   mergeEmailRecipients,
 } from '../utils/emailDestinations';
+import { getUserFacingError } from '../utils/userFacingError';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 const inputClasses =
   'w-full rounded-squircle-sm border border-outline-variant/70 bg-surface-container-lowest px-4 py-3 text-body-lg text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20';
@@ -114,8 +116,8 @@ export default function MedicalFollowUp() {
         setEditingRecord(record);
         setForm(record);
       })
-      .catch((error) => {
-        console.error(error);
+      .catch(() => {
+        logClientFailure('Chargement du suivi médical impossible');
         if (isMounted) showToast('Impossible de charger ce suivi médical.', 'error');
       })
       .finally(() => {
@@ -157,7 +159,9 @@ export default function MedicalFollowUp() {
       return;
     }
 
-    const previewWindow = typeof window !== 'undefined' ? window.open('', '_blank') : null;
+    const previewWindow = typeof window !== 'undefined'
+      ? window.open('', '_blank', 'noopener,noreferrer')
+      : null;
     setSubmitting(true);
     setResult(null);
 
@@ -183,12 +187,12 @@ export default function MedicalFollowUp() {
         submission.deliveryStatus === 'sent' ? 'success' : 'info',
       );
     } catch (error) {
-      console.error(error);
+      logClientFailure('Génération du PDF de suivi médical impossible');
       if (!pdfOpened) {
         previewWindow?.close();
       }
       showToast(
-        error instanceof Error ? error.message : 'Impossible d’enregistrer le suivi médical.',
+        getUserFacingError(error, 'Impossible d’enregistrer le suivi médical.'),
         'error',
       );
     } finally {

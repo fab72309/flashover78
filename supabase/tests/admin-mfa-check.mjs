@@ -11,6 +11,9 @@ const { PGlite } = await import(pathToFileURL(modulePath));
 const admin = '11111111-1111-4111-8111-111111111111';
 const member = '22222222-2222-4222-8222-222222222222';
 const contributor = '33333333-3333-4333-8333-333333333333';
+const adminSession = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const memberSession = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const contributorSession = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 
 test('admin TOTP authorization and Auth audit isolation execute in PostgreSQL', async (t) => {
   const db = new PGlite();
@@ -23,14 +26,24 @@ test('admin TOTP authorization and Auth audit isolation execute in PostgreSQL', 
     create function auth.uid() returns uuid language sql stable as $$ select (auth.jwt()->>'sub')::uuid $$;
     create table public.profiles (id uuid primary key, role text, display_name text);
     create table auth.mfa_factors (user_id uuid, factor_type text, status text);
+    create table auth.sessions (id uuid primary key, user_id uuid not null);
     create table auth.audit_log_entries (id uuid primary key, created_at timestamptz, payload json, ip_address varchar(64));
     create function private.current_role() returns text language sql stable security definer set search_path='' as $$ select coalesce((select role from public.profiles where id=auth.uid()), 'member') $$;
     create function private.role_rank(text) returns int language sql immutable as $$ select case $1 when 'admin' then 30 when 'contributor' then 20 when 'member' then 10 else 0 end $$;
     create function private.is_admin() returns boolean language sql stable security definer set search_path='' as $$ select coalesce((select role = 'admin' from public.profiles where id=auth.uid()), false) $$;
     insert into public.profiles values ('${admin}', 'admin', 'Admin'), ('${member}', 'member', 'Member'), ('${contributor}', 'contributor', 'Contributor');
     insert into auth.mfa_factors values ('${admin}', 'totp', 'verified'), ('${member}', 'totp', 'verified');
+    insert into auth.sessions values
+      ('${adminSession}', '${admin}'),
+      ('${memberSession}', '${member}'),
+      ('${contributorSession}', '${contributor}');
   `);
-  await db.exec(await readFile(new URL('../migrations/20260917165635_admin_totp_and_auth_audit.sql', import.meta.url), 'utf8'));
+  await db.exec(await readFile(new URL('../migrations/20260917172518_admin_totp_and_auth_audit.sql', import.meta.url), 'utf8'));
+  const hardeningMigration = await readFile(
+    new URL('../migrations/20260918015321_security_audit_hardening.sql', import.meta.url),
+    'utf8',
+  );
+  await db.exec(hardeningMigration.slice(0, hardeningMigration.indexOf('-- Account creation')));
   await db.exec(`
     create table public.protected_admin_data (id int);
     insert into public.protected_admin_data values (1);
@@ -45,9 +58,14 @@ test('admin TOTP authorization and Auth audit isolation execute in PostgreSQL', 
       (gen_random_uuid(), now() - interval '91 days', json_build_object('actor_id','${admin}','action','login'), '203.0.113.9'),
       (gen_random_uuid(), now(), '{"actor_id":"not-a-uuid","action":"login"}', '203.0.113.10');
   `);
-  const claims = async (sub, aal, method) => {
+  const claims = async (sub, aal, method, sessionId) => {
     await db.exec('reset role');
-    await db.query("select set_config('request.jwt.claims', $1, false)", [JSON.stringify({ sub, aal, ...(method ? { amr: [{ method }] } : {}) })]);
+    const defaultSession = sub === admin
+      ? adminSession
+      : sub === member
+        ? memberSession
+        : contributorSession;
+    await db.query("select set_config('request.jwt.claims', $1, false)", [JSON.stringify({ sub, aal, session_id: sessionId ?? defaultSession, ...(method ? { amr: [{ method }] } : {}) })]);
     await db.exec('set role authenticated');
   };
   const allowed = async (role) => (await db.query('select private.has_role($1) as allowed', [role])).rows[0].allowed;
@@ -90,6 +108,13 @@ test('admin TOTP authorization and Auth audit isolation execute in PostgreSQL', 
     await db.exec("reset role; update auth.mfa_factors set status='unverified'; set role authenticated");
     assert.equal(await allowed('admin'), false);
     await db.exec("reset role; delete from auth.mfa_factors; set role authenticated");
+    assert.equal(await allowed('admin'), false);
+  });
+  await t.test('revoked Auth session invalidates an otherwise valid admin token', async () => {
+    await db.exec(`reset role; insert into auth.mfa_factors values ('${admin}', 'totp', 'verified'); set role authenticated`);
+    await claims(admin, 'aal2', 'totp');
+    assert.equal(await allowed('admin'), true);
+    await db.exec(`reset role; delete from auth.sessions where id = '${adminSession}'; set role authenticated`);
     assert.equal(await allowed('admin'), false);
   });
   await t.test('member and contributor cannot access administrator audit', async () => {

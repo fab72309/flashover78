@@ -1,6 +1,5 @@
-import type { Resource } from '../types';
-
-export type BrulageDocumentSectionId = 'roles' | 'checklists' | 'references';
+import type { BrulageDocumentSectionId, Resource, ResourceCategory } from '../types';
+export type { BrulageDocumentSectionId } from '../types';
 
 export interface BrulageDocumentSectionDefinition {
   id: BrulageDocumentSectionId;
@@ -25,6 +24,10 @@ export const BRULAGE_DOCUMENT_SECTIONS: BrulageDocumentSectionDefinition[] = [
     description: 'Procédures, supports et documents utiles.',
   },
 ];
+
+export function isBrulageDocumentCategory(category: ResourceCategory) {
+  return category === 'BRULAGE_MAF' || category === 'BRULAGE_TDL_FO';
+}
 
 const ROLE_TERMS = [
   'fiche de role',
@@ -61,16 +64,20 @@ function getSearchText(document: Pick<Resource, 'title' | 'tags' | 'originalFile
 }
 
 export function getBrulageDocumentSection(
-  document: Pick<Resource, 'title' | 'tags' | 'originalFilename'>
+  document: Pick<Resource, 'title' | 'tags' | 'originalFilename' | 'documentSection'>
 ): BrulageDocumentSectionId {
-  const searchText = getSearchText(document);
-
-  if (ROLE_TERMS.some((term) => searchText.includes(term))) {
-    return 'roles';
+  if (document.documentSection) {
+    return document.documentSection;
   }
+
+  const searchText = getSearchText(document);
 
   if (CHECKLIST_TERMS.some((term) => searchText.includes(term))) {
     return 'checklists';
+  }
+
+  if (ROLE_TERMS.some((term) => searchText.includes(term))) {
+    return 'roles';
   }
 
   return 'references';

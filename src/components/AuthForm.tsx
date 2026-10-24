@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom';
 import { useAppVersion } from '../hooks/useAppVersion';
 import { APP_ROUTES, LOGO_PATHS } from '../utils/constants';
 import { getRememberSessionPreference } from '../lib/supabase';
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../utils/authRecovery';
+import { getUserFacingError } from '../utils/userFacingError';
 
 export default function AuthForm() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -35,6 +37,12 @@ export default function AuthForm() {
       return;
     }
 
+    if (isSignUp && password.length < PASSWORD_MIN_LENGTH) {
+      setError(`Le mot de passe doit contenir au moins ${PASSWORD_MIN_LENGTH} caractères`);
+      setLoading(false);
+      return;
+    }
+
     if (isSignUp && (!firstName.trim() || !lastName.trim())) {
       setError('Veuillez remplir tous les champs');
       setLoading(false);
@@ -56,7 +64,7 @@ export default function AuthForm() {
         await signInWithEmail(email, password, rememberSession);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Une erreur est survenue');
+      setError(getUserFacingError(err, 'Une erreur est survenue.'));
     } finally {
       setLoading(false);
     }
@@ -133,7 +141,7 @@ export default function AuthForm() {
             ) : null}
           </div>
           <div className="relative">
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClasses} required minLength={6} />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClasses} required minLength={isSignUp ? PASSWORD_MIN_LENGTH : undefined} maxLength={isSignUp ? PASSWORD_MAX_LENGTH : undefined} />
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={18} />
           </div>
         </div>
@@ -154,7 +162,7 @@ export default function AuthForm() {
           <div>
             <label className="block text-label-lg text-on-surface mb-1.5">Confirmer le mot de passe</label>
             <div className="relative">
-              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={inputClasses} required={isSignUp} minLength={6} />
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={inputClasses} required={isSignUp} minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} />
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" size={18} />
             </div>
           </div>

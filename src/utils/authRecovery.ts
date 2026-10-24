@@ -1,9 +1,26 @@
 import { APP_ROUTES } from './constants';
 
-export const PASSWORD_MIN_LENGTH = 6;
+const CANONICAL_AUTH_ORIGIN = 'https://app.flashover78.com';
+const LOCAL_AUTH_ORIGIN_PATTERN = /^http:\/\/(?:localhost|127\.0\.0\.1):(5173|4173)$/;
+
+// OWASP ASVS 5.0 recommends at least 15 characters when MFA is not mandatory.
+// The Supabase Auth project setting must be aligned separately in production.
+export const PASSWORD_MIN_LENGTH = 15;
+export const PASSWORD_MAX_LENGTH = 128;
+
+function getSafeAuthOrigin(origin: string) {
+  const candidate = origin.replace(/\/+$/, '');
+  return candidate === CANONICAL_AUTH_ORIGIN || LOCAL_AUTH_ORIGIN_PATTERN.test(candidate)
+    ? candidate
+    : CANONICAL_AUTH_ORIGIN;
+}
 
 export function getPasswordRecoveryRedirectUrl(origin: string) {
-  return `${origin.replace(/\/+$/, '')}${APP_ROUTES.RESET_PASSWORD}`;
+  return `${getSafeAuthOrigin(origin)}${APP_ROUTES.RESET_PASSWORD}`;
+}
+
+export function getEmailConfirmationRedirectUrl(origin: string) {
+  return `${getSafeAuthOrigin(origin)}${APP_ROUTES.LOGIN}`;
 }
 
 export function getRecoveryTokenHash(search: string) {

@@ -5,6 +5,7 @@ export type ResourceCategory =
   | 'AUTRE'
   | 'BRULAGE_TDL_FO'
   | 'BRULAGE_MAF';
+export type BrulageDocumentSectionId = 'roles' | 'checklists' | 'references';
 export type DocumentExpirationState = 'all' | 'valid' | 'expiring' | 'expired';
 export type CarpoolTripStatus = 'open' | 'full' | 'cancelled' | 'completed';
 export type CarpoolRequestStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
@@ -121,6 +122,7 @@ export interface Resource {
   id: string;
   title: string;
   category: ResourceCategory;
+  documentSection: BrulageDocumentSectionId | null;
   fileUrl: string;
   tags: string[];
   versionLabel: string;
@@ -164,6 +166,7 @@ export interface DocumentFilters {
 export interface DocumentMetadataInput {
   title: string;
   category: ResourceCategory;
+  documentSection?: BrulageDocumentSectionId | null;
   tags: string[];
   versionLabel: string;
   authorName: string;
@@ -271,7 +274,7 @@ export interface CarpoolPost {
   matches: CarpoolMatch[];
 }
 
-export type EquipmentRepairRequestEmailStatus = 'pending' | 'sent' | 'failed';
+export type EquipmentRepairRequestEmailStatus = 'pending' | 'sending' | 'sent' | 'failed';
 export type EquipmentRepairRequestLocation =
   | 'Montigny le Bretonneux'
   | 'Poissy'
@@ -345,7 +348,7 @@ export type MedicalFollowUpBurningType =
 export type MedicalFollowUpAirDuration = '30' | '60' | '90';
 export type MedicalFollowUpYesNo = 'OUI' | 'NON';
 export type MedicalFollowUpShower = 'Oui' | 'Non';
-export type MedicalFollowUpEmailStatus = 'pending' | 'sent' | 'failed';
+export type MedicalFollowUpEmailStatus = 'pending' | 'sending' | 'sent' | 'failed';
 
 export interface MedicalFollowUpFormData {
   trainerLevel: TrainerLevel;
@@ -385,7 +388,7 @@ export interface MedicalFollowUpRecord extends MedicalFollowUpFormData {
   updatedAt: Date;
 }
 
-export type MainCouranteEmailStatus = 'pending' | 'sent' | 'failed';
+export type MainCouranteEmailStatus = 'pending' | 'sending' | 'sent' | 'failed';
 
 export type MainCouranteSite =
   | 'Montigny le Bretonneux'

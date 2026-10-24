@@ -7,6 +7,7 @@ import LoadingSpinner from './LoadingSpinner';
 import { listMyTrainingHistory } from '../services/supabaseService';
 import type { TrainingHistoryItem } from '../types';
 import { APP_ROUTES } from '../utils/constants';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 export default function TrainingHistoryPanel({ userId }: { userId: string }) {
   const navigate = useNavigate();
@@ -25,8 +26,8 @@ export default function TrainingHistoryPanel({ userId }: { userId: string }) {
           setItems(history);
         }
       })
-      .catch((loadError) => {
-        console.error(loadError);
+      .catch(() => {
+        logClientFailure('Chargement de l’historique de formation impossible');
         if (isMounted) {
           setError(true);
         }

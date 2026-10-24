@@ -13,6 +13,7 @@ function createDocument(
     id: title,
     title,
     category: 'BRULAGE_MAF',
+    documentSection: null,
     fileUrl: '',
     tags,
     versionLabel: '1.0',

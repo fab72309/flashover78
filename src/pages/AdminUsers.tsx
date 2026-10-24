@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import AdminPageHeader from '../components/AdminPageHeader';
 import { useAuth } from '../contexts/AuthContext';
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../utils/authRecovery';
 import { useToast } from '../contexts/ToastContext';
 import {
   createManagedUser,
@@ -21,6 +22,7 @@ import {
   TRAINER_LEVELS,
 } from '../utils/constants';
 import { ROLE_LABELS } from '../utils/permissions';
+import { getUserFacingError } from '../utils/userFacingError';
 
 const roleOptions: Array<{ value: AppRole; description: string }> = [
   { value: 'member', description: 'Consultation et co-voiturage' },
@@ -41,9 +43,6 @@ function TrainerLevelPicker({
 }) {
   const toggleLevel = (level: TrainerLevel) => {
     if (value.includes(level)) {
-      if (value.length === 1) {
-        return;
-      }
       onChange(value.filter((candidate) => candidate !== level));
       return;
     }
@@ -66,7 +65,7 @@ function TrainerLevelPicker({
                 type="checkbox"
                 checked={checked}
                 onChange={() => toggleLevel(level)}
-                disabled={disabled || (checked && value.length === 1)}
+                disabled={disabled}
                 className="mt-0.5 h-4 w-4"
               />
               <span className="min-w-0">
@@ -82,7 +81,8 @@ function TrainerLevelPicker({
         })}
       </div>
       <p className="mt-2 text-label-sm text-on-surface-variant">
-        Une même personne peut avoir plusieurs fonctions.
+        Une même personne peut avoir plusieurs fonctions. Laisser toutes les cases décochées
+        si aucune qualification n’est attribuée.
       </p>
     </fieldset>
   );
@@ -100,7 +100,7 @@ export default function AdminUsers() {
   const [lastName, setLastName] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<AppRole>('member');
-  const [trainerLevels, setTrainerLevels] = useState<TrainerLevel[]>(['RSFR']);
+  const [trainerLevels, setTrainerLevels] = useState<TrainerLevel[]>([]);
   const [roleBusy, setRoleBusy] = useState<string | null>(null);
   const [trainerBusy, setTrainerBusy] = useState<string | null>(null);
 
@@ -110,7 +110,7 @@ export default function AdminUsers() {
       setUsers(await listManagedUsers());
     } catch (error) {
       showToast(
-        error instanceof Error ? error.message : 'Impossible de charger les utilisateurs.',
+        getUserFacingError(error, 'Impossible de charger les utilisateurs.'),
         'error',
       );
     } finally {
@@ -144,7 +144,7 @@ export default function AdminUsers() {
     setLastName('');
     setPassword('');
     setRole('member');
-    setTrainerLevels(['RSFR']);
+    setTrainerLevels([]);
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -164,7 +164,7 @@ export default function AdminUsers() {
       await loadUsers();
     } catch (error) {
       showToast(
-        error instanceof Error ? error.message : 'Impossible de gérer cet utilisateur.',
+        getUserFacingError(error, 'Impossible de gérer cet utilisateur.'),
         'error',
       );
     } finally {
@@ -191,7 +191,7 @@ export default function AdminUsers() {
       showToast(`Rôle défini sur ${ROLE_LABELS[nextRole]}.`, 'success');
     } catch (error) {
       showToast(
-        error instanceof Error ? error.message : 'Impossible de modifier ce rôle.',
+        getUserFacingError(error, 'Impossible de modifier ce rôle.'),
         'error',
       );
     } finally {
@@ -203,7 +203,7 @@ export default function AdminUsers() {
     managedUser: ManagedUser,
     nextTrainerLevels: TrainerLevel[],
   ) => {
-    if (!nextTrainerLevels.length || managedUser.trainerLevels.join('|') === nextTrainerLevels.join('|')) {
+    if (managedUser.trainerLevels.join('|') === nextTrainerLevels.join('|')) {
       return;
     }
 
@@ -221,7 +221,7 @@ export default function AdminUsers() {
       showToast('Fonctions formateur mises à jour.', 'success');
     } catch (error) {
       showToast(
-        error instanceof Error ? error.message : 'Impossible de modifier les fonctions formateur.',
+        getUserFacingError(error, 'Impossible de modifier les fonctions formateur.'),
         'error',
       );
     } finally {
@@ -314,7 +314,8 @@ export default function AdminUsers() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 className="w-full rounded-lg bg-surface-container-highest px-4 py-3 text-on-surface"
-                minLength={6}
+                minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_LENGTH}
                 required
               />
             </label>

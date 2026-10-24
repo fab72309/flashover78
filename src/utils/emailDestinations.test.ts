@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createDefaultFormEmailDestinations,
   mergeEmailRecipients,
   normalizeEmailRecipients,
+  toMailtoRecipientList,
   validateFormEmailDestinations,
 } from './emailDestinations';
 
 describe('destinataires email des formulaires', () => {
+  it('ne publie aucun destinataire opérationnel dans le fallback navigateur', () => {
+    expect(createDefaultFormEmailDestinations()).toEqual({
+      mainCourante: [],
+      suiviMedical: [],
+      demandeReparation: [],
+    });
+  });
+
   it('normalise les listes saisies et supprime les doublons', () => {
     expect(normalizeEmailRecipients('  A@EXAMPLE.FR, b@example.fr\nA@example.fr; ')).toEqual([
       'a@example.fr',
@@ -42,5 +52,11 @@ describe('destinataires email des formulaires', () => {
       suiviMedical: ['adresse-invalide'],
       demandeReparation: ['repair@example.fr'],
     })).toContain('adresse-invalide');
+  });
+
+  it('encode et exclut les adresses invalides dans une URI mailto', () => {
+    expect(toMailtoRecipientList(['person+tag@example.fr', 'evil@example.fr?bcc=leak@example.net'])).toBe(
+      'person%2Btag%40example.fr',
+    );
   });
 });

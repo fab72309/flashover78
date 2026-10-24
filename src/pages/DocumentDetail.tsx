@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -20,6 +20,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ConfirmationDialog from '../components/ConfirmationDialog';
+import DocumentSectionSelector from '../components/DocumentSectionSelector';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import {
@@ -36,6 +37,7 @@ import {
   updateDocumentMetadata,
 } from '../services/supabaseService';
 import type {
+  BrulageDocumentSectionId,
   Resource,
   ResourceCategory,
   ResourceVersion,
@@ -51,6 +53,11 @@ import {
   getResourceCategoryLabel,
 } from '../utils/documents';
 import { canContribute, isAdministrator } from '../utils/permissions';
+import {
+  getBrulageDocumentSection,
+  isBrulageDocumentCategory,
+} from '../utils/brulageDocuments';
+import { logClientFailure } from '../utils/clientDiagnostics';
 
 export default function DocumentDetail() {
   const { id } = useParams();
@@ -67,18 +74,33 @@ export default function DocumentDetail() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [referenceDate] = useState(() => new Date());
+  const loadGeneration = useRef(0);
 
   const prepareUrls = useCallback(async (resource: Resource) => {
     const cachedUrl = resource.isOfflineSelected
       ? await getCachedDocumentUrl(resource)
       : null;
     const nextOpenUrl = cachedUrl ?? await getDocumentDownloadUrl(resource);
-    setOpenUrl(nextOpenUrl);
-    setDownloadUrl(await getDocumentDownloadUrl(resource, true));
+    return {
+      openUrl: nextOpenUrl,
+      downloadUrl: await getDocumentDownloadUrl(resource, true),
+    };
   }, []);
 
   const loadDocument = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    const expectedUserId = user?.id;
+    const isCurrent = () => loadGeneration.current === generation && user?.id === expectedUserId;
+
     if (!id) {
+      return;
+    }
+
+    if (!expectedUserId) {
+      setDocument(null);
+      setOpenUrl(null);
+      setDownloadUrl(null);
+      setLoading(false);
       return;
     }
 
@@ -86,33 +108,58 @@ export default function DocumentDetail() {
     setError(null);
     try {
       const nextDocument = await getDocumentById(id);
+      if (!isCurrent()) return;
       if (!nextDocument) {
         setDocument(null);
         setError('Ce document est introuvable.');
         return;
       }
 
-      setDocument(nextDocument);
-      const [nextVersions] = await Promise.all([
+      const [nextVersions, nextUrls] = await Promise.all([
         listDocumentVersions(id),
         prepareUrls(nextDocument),
       ]);
+      if (!isCurrent()) {
+        for (const url of [nextUrls.openUrl, nextUrls.downloadUrl]) {
+          if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+        }
+        return;
+      }
+      setDocument(nextDocument);
+      setOpenUrl(nextUrls.openUrl);
+      setDownloadUrl(nextUrls.downloadUrl);
       setVersions(nextVersions);
-    } catch (loadError) {
-      console.error(loadError);
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Impossible de charger ce document.'
-      );
+    } catch {
+      logClientFailure('Chargement des versions documentaires impossible');
+      setError('Impossible de charger ce document.');
     } finally {
       setLoading(false);
     }
-  }, [id, prepareUrls]);
+  }, [id, prepareUrls, user?.id]);
 
   useEffect(() => {
     loadDocument();
+    return () => {
+      loadGeneration.current += 1;
+    };
   }, [loadDocument]);
+
+  useEffect(() => {
+    if (!openUrl?.startsWith('blob:')) return undefined;
+    return () => URL.revokeObjectURL(openUrl);
+  }, [openUrl]);
+
+  useEffect(() => {
+    if (!downloadUrl?.startsWith('blob:')) return undefined;
+    return () => URL.revokeObjectURL(downloadUrl);
+  }, [downloadUrl]);
+
+  useEffect(() => {
+    if (!user) {
+      setOpenUrl(null);
+      setDownloadUrl(null);
+    }
+  }, [user]);
 
   const handleFavorite = async () => {
     if (!document) {
@@ -123,13 +170,9 @@ export default function DocumentDetail() {
     try {
       const isFavorite = await toggleDocumentFavorite(document.id);
       setDocument({ ...document, isFavorite });
-    } catch (favoriteError) {
-      showToast(
-        favoriteError instanceof Error
-          ? favoriteError.message
-          : 'Impossible de modifier le favori.',
-        'error'
-      );
+    } catch {
+      logClientFailure('Modification du favori documentaire impossible');
+      showToast('Impossible de modifier le favori.', 'error');
     } finally {
       setActionBusy(false);
     }
@@ -146,22 +189,22 @@ export default function DocumentDetail() {
         await removeDocumentFromOffline(document);
         const nextDocument = { ...document, isOfflineSelected: false };
         setDocument(nextDocument);
-        await prepareUrls(nextDocument);
+        const nextUrls = await prepareUrls(nextDocument);
+        setOpenUrl(nextUrls.openUrl);
+        setDownloadUrl(nextUrls.downloadUrl);
         showToast('Document retiré du stockage hors ligne.', 'success');
       } else {
         await cacheDocumentForOffline(document);
         const nextDocument = { ...document, isOfflineSelected: true };
         setDocument(nextDocument);
-        await prepareUrls(nextDocument);
+        const nextUrls = await prepareUrls(nextDocument);
+        setOpenUrl(nextUrls.openUrl);
+        setDownloadUrl(nextUrls.downloadUrl);
         showToast('Document disponible hors ligne.', 'success');
       }
-    } catch (offlineError) {
-      showToast(
-        offlineError instanceof Error
-          ? offlineError.message
-          : 'Impossible de modifier la disponibilité hors ligne.',
-        'error'
-      );
+    } catch {
+      logClientFailure('Mise en cache hors ligne impossible');
+      showToast('Impossible de modifier la disponibilité hors ligne.', 'error');
     } finally {
       setActionBusy(false);
     }
@@ -171,13 +214,9 @@ export default function DocumentDetail() {
     try {
       const url = await getDocumentVersionDownloadUrl(version);
       window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (versionError) {
-      showToast(
-        versionError instanceof Error
-          ? versionError.message
-          : 'Impossible d’ouvrir cette version.',
-        'error'
-      );
+    } catch {
+      logClientFailure('Ouverture de la version documentaire impossible');
+      showToast('Impossible d’ouvrir cette version.', 'error');
     }
   };
 
@@ -192,13 +231,9 @@ export default function DocumentDetail() {
       setDeleteDialogOpen(false);
       showToast('Document supprimé.', 'success');
       navigate(APP_ROUTES.RESOURCES);
-    } catch (deleteError) {
-      showToast(
-        deleteError instanceof Error
-          ? deleteError.message
-          : 'Impossible de supprimer ce document.',
-        'error'
-      );
+    } catch {
+      logClientFailure('Suppression du document impossible');
+      showToast('Impossible de supprimer ce document.', 'error');
     } finally {
       setDeleteBusy(false);
     }
@@ -449,16 +484,18 @@ export default function DocumentDetail() {
             <h2 className="mt-1 text-headline-lg text-on-surface">Mettre à jour le document</h2>
           </div>
           <div className="grid gap-4 xl:grid-cols-2">
-            <MetadataEditor
-              document={document}
-              onUpdated={async (updatedDocument) => {
-                if (updatedDocument) {
-                  setDocument(updatedDocument);
-                  await prepareUrls(updatedDocument);
-                }
-                showToast('Métadonnées mises à jour.', 'success');
-              }}
-            />
+            {isAdministrator(user) ? (
+              <MetadataEditor
+                document={document}
+                onUpdated={async (updatedDocument) => {
+                  if (updatedDocument) {
+                    setDocument(updatedDocument);
+                    await prepareUrls(updatedDocument);
+                  }
+                  showToast('Métadonnées mises à jour.', 'success');
+                }}
+              />
+            ) : null}
             <VersionUploader
               document={document}
               onUploaded={async () => {
@@ -530,6 +567,9 @@ function MetadataEditor({
   const { showToast } = useToast();
   const [title, setTitle] = useState(document.title);
   const [category, setCategory] = useState<ResourceCategory>(document.category);
+  const [documentSection, setDocumentSection] = useState<BrulageDocumentSectionId>(
+    document.documentSection ?? getBrulageDocumentSection(document),
+  );
   const [authorName, setAuthorName] = useState(document.authorName);
   const [tags, setTags] = useState(document.tags.join(', '));
   const [effectiveAt, setEffectiveAt] = useState(toDateInput(document.effectiveAt));
@@ -543,19 +583,16 @@ function MetadataEditor({
       const updatedDocument = await updateDocumentMetadata(document.id, {
         title,
         category,
+        documentSection: isBrulageDocumentCategory(category) ? documentSection : null,
         authorName,
         tags: tags.split(',').map((tag) => tag.trim()).filter(Boolean),
         effectiveAt: effectiveAt ? new Date(`${effectiveAt}T12:00:00`) : null,
         expiresAt: expiresAt ? new Date(`${expiresAt}T12:00:00`) : null,
       });
       await onUpdated(updatedDocument);
-    } catch (metadataError) {
-      showToast(
-        metadataError instanceof Error
-          ? metadataError.message
-          : 'Impossible de mettre à jour les métadonnées.',
-        'error'
-      );
+    } catch {
+      logClientFailure('Mise à jour des métadonnées impossible');
+      showToast('Impossible de mettre à jour les métadonnées.', 'error');
     } finally {
       setBusy(false);
     }
@@ -581,6 +618,13 @@ function MetadataEditor({
             ))}
           </select>
         </label>
+        {isBrulageDocumentCategory(category) ? (
+          <DocumentSectionSelector
+            value={documentSection}
+            onChange={setDocumentSection}
+            name={`document-section-${document.id}`}
+          />
+        ) : null}
         <FormInput label="Auteur" value={authorName} onChange={setAuthorName} />
         <FormInput label="Tags" value={tags} onChange={setTags} />
         <div className="grid grid-cols-2 gap-3">
@@ -633,13 +677,9 @@ function VersionUploader({
       setFile(null);
       setVersionLabel('');
       await onUploaded();
-    } catch (versionError) {
-      showToast(
-        versionError instanceof Error
-          ? versionError.message
-          : 'Impossible de publier cette version.',
-        'error'
-      );
+    } catch {
+      logClientFailure('Publication de la version documentaire impossible');
+      showToast('Impossible de publier cette version.', 'error');
     } finally {
       setBusy(false);
     }
@@ -656,7 +696,7 @@ function VersionUploader({
           <span className="text-label-lg text-on-surface">Fichier</span>
           <input
             type="file"
-            accept=".pdf,.odt,.doc,.docx,.ppt,.pptx,.txt"
+            accept=".pdf,.odt,.docx,.pptx,.txt"
             onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             className="mt-1 w-full rounded-lg bg-surface-container-highest px-3 py-3 text-on-surface"
             required

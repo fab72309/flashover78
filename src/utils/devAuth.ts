@@ -22,7 +22,7 @@ const devUserRole: AppUser['role'] =
     : String(import.meta.env.VITE_DEV_USER_ADMIN || 'false') === 'true'
       ? 'admin'
       : 'member';
-const configuredTrainerLevels = String(import.meta.env.VITE_DEV_USER_TRAINER_LEVELS || 'RSFR')
+const configuredTrainerLevels = String(import.meta.env.VITE_DEV_USER_TRAINER_LEVELS || '')
   .split(',')
   .map((level) => level.trim().toUpperCase())
   .filter((level): level is AppUser['trainerLevels'][number] =>
@@ -34,7 +34,10 @@ export const devUser: AppUser = {
   email: import.meta.env.VITE_DEV_USER_EMAIL || 'dev@flashover78.local',
   displayName: devUserDisplayName,
   role: devUserRole,
-  trainerLevels: configuredTrainerLevels.length > 0 ? configuredTrainerLevels : ['RSFR'],
+  // The preview fixture is not a profile-provisioning path. Keep it
+  // unqualified by default so the local experience cannot suggest that a
+  // trainer qualification is assigned automatically.
+  trainerLevels: configuredTrainerLevels,
   isAdmin: devUserRole === 'admin',
   firstName: devFirstName,
   lastName: devLastNameParts.join(' ') || 'Dev',
