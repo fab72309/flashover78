@@ -67,6 +67,7 @@ import {
   enforceOfflineDocumentOwner,
   encryptOfflineResponse,
   getOfflineDocumentEncryptionKey,
+  hasFreshOfflineDocumentTimestamp,
   isRemoteOfflineSessionValid,
   markOfflineDocumentCached,
   OFFLINE_DOCUMENT_CACHE,
@@ -2865,6 +2866,32 @@ async function writeOfflineDocumentMetadata(resources: Resource[], userId: strin
   );
 }
 
+async function readCurrentOfflineResources() {
+  const { data, error } = await supabase.auth.getSession();
+  const session = data.session;
+  if (error || !session || (session.expires_at && session.expires_at * 1000 <= Date.now())
+    || !(await isOfflineDocumentOwner(session.user.id))) return [];
+  await purgeExpiredOfflineDocumentData(Date.now(), session.user.id);
+  const resources = await readOfflineDocumentMetadata(session.user.id);
+  const available: Resource[] = [];
+  for (const resource of resources) {
+    if (await hasFreshOfflineDocumentTimestamp(resource.id, session.user.id)) available.push(resource);
+  }
+  const { data: latest, error: latestError } = await supabase.auth.getSession();
+  if (latestError || latest.session?.user.id !== session.user.id
+    || !(await isOfflineDocumentOwner(session.user.id))) return [];
+  return available;
+}
+
+async function searchOfflineDocuments(filters: DocumentFilters) {
+  const resources = await readCurrentOfflineResources();
+  const previousMockResources = mockResources;
+  mockResources = resources;
+  const filtered = filterMockDocuments(filters);
+  mockResources = previousMockResources;
+  return filtered;
+}
+
 function getOfflineCacheUrl(resource: Resource) {
   return `${window.location.origin}/__offline_documents/${resource.id}/${encodeURIComponent(
     resource.versionLabel
@@ -2874,6 +2901,10 @@ function getOfflineCacheUrl(resource: Resource) {
 export async function searchDocuments(filters: DocumentFilters = {}) {
   if (isDevAuthBypassEnabled) {
     return filterMockDocuments(filters);
+  }
+
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return searchOfflineDocuments(filters);
   }
 
   assertSupabaseConfigured();
@@ -2888,15 +2919,7 @@ export async function searchDocuments(filters: DocumentFilters = {}) {
 
   if (error) {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      const session = (await supabase.auth.getSession()).data.session;
-      const offlineResources = session
-        ? await readOfflineDocumentMetadata(session.user.id)
-        : [];
-      const previousMockResources = mockResources;
-      mockResources = offlineResources;
-      const filtered = filterMockDocuments(filters);
-      mockResources = previousMockResources;
-      return filtered;
+      return searchOfflineDocuments(filters);
     }
     throw error;
   }
@@ -2913,6 +2936,10 @@ export async function getDocumentById(id: string) {
     return mockResources.find((resource) => resource.id === id) ?? null;
   }
 
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return (await readCurrentOfflineResources()).find((resource) => resource.id === id) ?? null;
+  }
+
   assertSupabaseConfigured();
   const { data, error } = await supabase.rpc('search_documents_with_sections', {
     p_query: null,
@@ -2925,12 +2952,7 @@ export async function getDocumentById(id: string) {
 
   if (error) {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      const session = (await supabase.auth.getSession()).data.session;
-      if (!session) {
-        return null;
-      }
-      return (await readOfflineDocumentMetadata(session.user.id))
-        .find((resource) => resource.id === id) ?? null;
+      return (await readCurrentOfflineResources()).find((resource) => resource.id === id) ?? null;
     }
     throw error;
   }
@@ -3579,8 +3601,19 @@ export async function getCachedDocumentUrl(resource: Resource) {
     }
   }
 
-  await enforceOfflineDocumentOwner(currentUser.id);
-  await purgeExpiredOfflineDocumentData(Date.now(), currentUser.id);
+  // A delayed read must never rebind an old account after Auth has changed.
+  if (!isDevAuthBypassEnabled && !(await isOfflineDocumentOwner(currentUser.id))) {
+    return null;
+  }
+  try {
+    await purgeExpiredOfflineDocumentData(Date.now(), currentUser.id);
+    if (!isDevAuthBypassEnabled && !(await hasFreshOfflineDocumentTimestamp(resource.id, currentUser.id))) {
+      await clearOfflineDocumentCache(resource, currentUser.id);
+      return null;
+    }
+  } catch {
+    return null;
+  }
 
   const cache = await window.caches.open(OFFLINE_DOCUMENT_CACHE);
   const response = await cache.match(getOfflineCacheUrl(resource));
@@ -3595,6 +3628,18 @@ export async function getCachedDocumentUrl(resource: Resource) {
           response,
           await getOfflineDocumentEncryptionKey(currentUser.id),
         );
+    if (!isDevAuthBypassEnabled) {
+      const { data: latestAuth, error: latestAuthError } = await supabase.auth.getSession();
+      if (latestAuthError || latestAuth.session?.user.id !== currentUser.id
+        || (latestAuth.session.expires_at && latestAuth.session.expires_at * 1000 <= Date.now())
+        || !(await isOfflineDocumentOwner(currentUser.id))) {
+        return null;
+      }
+      if (!(await hasFreshOfflineDocumentTimestamp(resource.id, currentUser.id))) {
+        await clearOfflineDocumentCache(resource, currentUser.id);
+        return null;
+      }
+    }
     return URL.createObjectURL(documentBlob);
   } catch {
     // Legacy plaintext entries and entries encrypted with a deleted account

@@ -22,6 +22,8 @@ function fixture({
   auditErrors = null,
   profileUpsertError = null,
   cleanupError = null,
+  retainedTable = null,
+  retentionError = null,
 } = {}) {
   let handler;
   let clients = 0;
@@ -43,12 +45,16 @@ function fixture({
     from: (table) => {
       if (table === 'admin_operation_audit') {
         return {
+          select: () => ({ eq: async () => ({ count: retainedTable === table ? 1 : 0, error: retentionError }) }),
           insert: async () => ({
             error: Array.isArray(auditErrors)
               ? (auditErrors[auditCalls++] ?? null)
               : auditError,
           }),
         };
+      }
+      if (['medical_follow_ups', 'main_courantes', 'equipment_repair_requests', 'training_audit_log', 'document_audit_log'].includes(table)) {
+        return { select: () => ({ eq: async () => ({ count: retainedTable === table ? 1 : 0, error: retentionError }) }) };
       }
       if (table === 'profiles') {
         return {
@@ -142,5 +148,27 @@ test('reports an intervention when profile creation and compensation both fail',
   });
   assert.equal(response.status, 500);
   assert.match((await response.json()).error, /intervention est requise/);
+  assert.equal(f.counts().deleteCalls, 1);
+});
+
+test('refuses account deletion when retained medical records or business journals exist', async () => {
+  for (const retainedTable of ['medical_follow_ups', 'main_courantes', 'equipment_repair_requests', 'admin_operation_audit', 'training_audit_log', 'document_audit_log']) {
+    const f = fixture({ retainedTable });
+    const response = await f.request('POST', { action: 'delete', userId: 'target-user' });
+    assert.equal(response.status, 409, retainedTable);
+    assert.deepEqual(await response.json(), { error: 'La conservation des données interdit la suppression de ce compte.' });
+    assert.equal(f.counts().deleteCalls, 0);
+  }
+});
+
+test('fails closed when retained records cannot be checked', async () => {
+  const f = fixture({ retentionError: { message: 'synthetic failure' } });
+  assert.equal((await f.request('POST', { action: 'delete', userId: 'target-user' })).status, 503);
+  assert.equal(f.counts().deleteCalls, 0);
+});
+
+test('allows deletion of an unused account after every retention check', async () => {
+  const f = fixture();
+  assert.equal((await f.request('POST', { action: 'delete', userId: 'target-user' })).status, 200);
   assert.equal(f.counts().deleteCalls, 1);
 });

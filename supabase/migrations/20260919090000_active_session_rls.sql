@@ -63,16 +63,32 @@ with check (
   and (select auth.uid()) = driver_id
 );
 
-alter policy "carpool_trips_update_driver"
-on public.carpool_trips
-using (
-  (select private.has_active_session())
-  and (select auth.uid()) = driver_id
-)
-with check (
-  (select private.has_active_session())
-  and (select auth.uid()) = driver_id
-);
+-- Direct trip updates are intentionally revoked by the security foundation;
+-- the application uses the transactional SECURITY DEFINER RPCs instead. Keep
+-- this migration compatible with older environments that still have the
+-- legacy policy without recreating that direct-write path on Flashover78.
+do $$
+begin
+  if exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'carpool_trips'
+      and policyname = 'carpool_trips_update_driver'
+  ) then
+    alter policy "carpool_trips_update_driver"
+    on public.carpool_trips
+    using (
+      (select private.has_active_session())
+      and (select auth.uid()) = driver_id
+    )
+    with check (
+      (select private.has_active_session())
+      and (select auth.uid()) = driver_id
+    );
+  end if;
+end
+$$;
 
 alter policy "carpool_requests_select_involved"
 on public.carpool_requests

@@ -2,18 +2,33 @@
 
 ## Mise en service
 
-Le code et la migration seuls ne prouvent pas une activation en production. Cette livraison locale n’a modifié aucun réglage distant ni exécuté la migration sur le projet hébergé.
+Le code et la migration seuls ne prouvent pas une activation en production. Les
+migrations et fonctions Edge ont été appliquées au projet Supabase autorisé le
+1er octobre 2026 ; le frontend n'a pas été publié depuis cette branche et les
+parcours authentifiés réels restent à vérifier.
 
-1. Vérifier que le fournisseur TOTP est activé dans Supabase Authentication. Prévoir un opérateur habilité ayant accès au projet Supabase avant d’appliquer la migration.
-2. Déployer le frontend, les Edge Functions modifiées et, dans l'ordre, les migrations `20260917172518_admin_totp_and_auth_audit.sql`, `20260918015321_security_audit_hardening.sql`, `20260919090000_active_session_rls.sql`, `20260919130000_rpc_active_session_hardening.sql`, `20260919140000_storage_lifecycle_hardening.sql`, `20260919150000_input_bounds_hardening.sql`, `20260919160000_storage_cleanup_worker.sql`, `20260919170000_form_pdf_server_finalization.sql`, `20260919180000_document_server_finalization.sql`, `20260919180022_block_legacy_office_uploads.sql` puis `20260919190000_query_response_bounds.sql`, `20260919190100_carpool_lock_order_hardening.sql`, `20260919190200_global_form_email_rate_limit.sql`, `20260919200000_document_contributor_publish.sql`, `20260920064930_remove_default_trainer_qualification.sql`, `20260920064931_restrict_email_destinations.sql` et `20260920065639_training_planning_member_view_only.sql` selon le processus de publication habituel. La première correspond à la version déjà présente à distance sous le timestamp `20260917172518` et bloque les opérations administrateur sans MFA TOTP ; les suivantes durcissent autorisations, révocation, quotas utilisateur et global email, objets privés, cycle de vie Storage, formats Office legacy, bornes d'entrée, traitement de la file de nettoyage, limites de réponses, verrouillage déterministe du covoiturage, finalisation serveur des PDF de formulaires et du catalogue, qualifications explicites, destinataires admin-only et planning membre en lecture seule. Cette livraison locale n'a exécuté aucune de ces migrations sur le projet hébergé.
-3. Dans **Authentication → Configuration → Audit Logs**, activer **Write audit logs to the database**. Ce réglage est obligatoire pour alimenter le journal présenté par l’application. Il n’a pas été activé par cette livraison. Une liste vide ne prouve ni une absence de connexions ni une configuration correcte ; vérifier explicitement le réglage et un événement réel après activation.
+1. Vérifier que le fournisseur TOTP est activé dans Supabase Authentication. Ce
+   réglage n'a pas été modifié automatiquement.
+2. Les migrations `20260918015321_security_audit_hardening.sql`,
+   `20260919090000_active_session_rls.sql`, `20260919130000_rpc_active_session_hardening.sql`,
+   `20260919140000_storage_lifecycle_hardening.sql`, `20260919150000_input_bounds_hardening.sql`,
+   `20260919160000_storage_cleanup_worker.sql`, `20260919170000_form_pdf_server_finalization.sql`,
+   `20260919180000_document_server_finalization.sql`, `20260919180022_block_legacy_office_uploads.sql`,
+   `20260919190000_query_response_bounds.sql`, `20260919190100_carpool_lock_order_hardening.sql`,
+   `20260919190200_global_form_email_rate_limit.sql`, `20260919200000_document_contributor_publish.sql`,
+   `20260920064930_remove_default_trainer_qualification.sql`, `20260920064931_restrict_email_destinations.sql`
+   et `20260920065639_training_planning_member_view_only.sql` ont été appliquées
+   dans l'ordre le 1er octobre 2026, avec les sept fonctions Edge corrigées et
+   les secrets CORS/redirection/worker présents par nom. Aucun email réel ni
+   donnée métier n'a été utilisé. Le frontend reste à publier séparément.
+3. Dans **Authentication → Configuration → Audit Logs**, activer **Write audit logs to the database**. Ce réglage est obligatoire pour alimenter le journal présenté par l’application et n'a pas été vérifié ni activé par cette exécution. Une liste vide ne prouve ni une absence de connexions ni une configuration correcte ; vérifier explicitement le réglage et un événement synthétique après activation.
 4. Chaque administrateur associe son application d’authentification, puis saisit un code TOTP valide avant d’accéder aux fonctions administratives. Tester un compte administrateur réel, puis une session AAL1 et un compte membre, sur l’environnement autorisé.
 
 ## Contrôle des autorisations
 
-La migration additive `20260919200000_document_contributor_publish.sql` doit
-être appliquée après les migrations de finalisation documentaire : elle autorise
-la publication et les nouvelles versions par les contributeurs, sans leur
+La migration additive `20260919200000_document_contributor_publish.sql` a été
+appliquée après les migrations de finalisation documentaire : elle autorise la
+publication et les nouvelles versions par les contributeurs, sans leur
 accorder la modification administrative des métadonnées.
 
 Les migrations `20260920064930_remove_default_trainer_qualification.sql` et
@@ -21,7 +36,8 @@ Les migrations `20260920064930_remove_default_trainer_qualification.sql` et
 métier : aucune qualification formateur par défaut et aucune lecture membre des
 destinataires opérationnels. `20260920065639_training_planning_member_view_only.sql`
 réserve les mutations de planning aux contributeurs/administrateurs tout en
-conservant la consultation membre ; son exécution distante reste à vérifier.
+conservant la consultation membre ; son application distante est confirmée par
+l'historique de migrations, mais un E2E avec comptes synthétiques reste à faire.
 
 Les politiques et RPC existantes utilisant `private.has_role('admin')` ou `private.is_admin()` exigent désormais simultanément une identité authentifiée, le rôle administrateur en base, une session Auth encore active, un JWT `aal2`, une référence AMR `totp` et un facteur TOTP encore vérifié dans `auth.mfa_factors`. Un facteur téléphone seul ne suffit pas. La révocation de la session ou la suppression du dernier facteur TOTP vérifié fait échouer le contrôle même si un ancien JWT reste AAL2. Les droits cumulatifs membre et contributeur restent accessibles selon le rôle existant.
 

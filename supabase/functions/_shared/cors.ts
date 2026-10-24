@@ -11,7 +11,10 @@ function allowedOrigins() {
     .split(',')
     .map((origin) => origin.trim().replace(/\/$/, ''))
     .filter(Boolean)
-  return new Set([...DEFAULT_ALLOWED_ORIGINS, ...configured])
+  // A deployed allowlist is authoritative. Do not silently retain localhost
+  // origins when production explicitly configures its trusted frontend; the
+  // development defaults remain available only when no value is configured.
+  return new Set(configured.length > 0 ? configured : DEFAULT_ALLOWED_ORIGINS)
 }
 
 export function isAllowedOrigin(origin: string | null) {

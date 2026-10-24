@@ -19,6 +19,7 @@ const finalizerMigration = await readFile(
   'utf8',
 );
 const userId = '11111111-1111-4111-8111-111111111111';
+const quotaMigration = await readFile(new URL('../migrations/20261024162243_security_upload_quota_boundaries.sql', import.meta.url), 'utf8');
 const sessionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 test('form PDF quota, object binding and cleanup queue fail closed', async (t) => {
@@ -80,6 +81,8 @@ test('form PDF quota, object binding and cleanup queue fail closed', async (t) =
   await db.exec(finalizerMigration);
   await db.exec(finalizerMigration);
   await db.exec(workerMigration);
+  await db.exec(quotaMigration);
+  await db.exec(quotaMigration);
   await db.exec(`
     select set_config('request.jwt.claims', '${JSON.stringify({ sub: userId, session_id: sessionId })}', false);
   `);
@@ -145,13 +148,12 @@ test('form PDF quota, object binding and cleanup queue fail closed', async (t) =
     "select set_config('request.jwt.claims', $1, false)",
     [JSON.stringify({ role: 'service_role' })],
   );
-  await assert.rejects(
-    () => db.query(
-      `select public.register_form_pdf_approval('main-courantes', $1, $2, 1024)`,
-      [boundaryServerPath, userId],
-    ),
-    /Quota PDF atteint/,
-  );
+  assert.equal((await db.query('select count(*)::int as n from storage.objects')).rows[0].n, 50);
+  assert.equal((await db.query(
+    `select public.register_form_pdf_approval('main-courantes', $1, $2, 1024) as approved`,
+    [boundaryServerPath, userId],
+  )).rows[0].approved, true);
+  assert.equal((await db.query("select has_function_privilege('authenticated', 'public.register_form_pdf_approval(text,text,uuid,bigint)', 'EXECUTE') as allowed")).rows[0].allowed, false);
   await db.query(
     "select set_config('request.jwt.claims', $1, false)",
     [JSON.stringify({ role: 'authenticated', sub: userId, session_id: sessionId })],

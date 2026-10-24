@@ -1,3 +1,4 @@
+import { readJsonObject } from '../_shared/requestBody.ts'
 import { decodeBase64Document } from '../_shared/pdf.ts'
 import { corsHeadersForRequest, preflightResponse, rejectDisallowedOrigin } from '../_shared/cors.ts'
 import { getConfiguredKey } from '../_shared/config.ts'
@@ -94,20 +95,13 @@ Deno.serve(async (request) => {
     return jsonResponse(403, { error: 'Droits insuffisants.' })
   }
 
-  let payload: Record<string, unknown>
-  try {
-    const body = await request.text()
-    if (new TextEncoder().encode(body).byteLength > MAX_REQUEST_BYTES) {
-      return jsonResponse(413, { error: 'Requête trop volumineuse.' })
-    }
-    const parsed: unknown = JSON.parse(body)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return jsonResponse(400, { error: 'Requête invalide.' })
-    }
-    payload = parsed as Record<string, unknown>
-  } catch {
-    return jsonResponse(400, { error: 'Requête invalide.' })
+  const parsedBody = await readJsonObject(request, MAX_REQUEST_BYTES)
+  if (parsedBody.error) {
+    return jsonResponse(parsedBody.error === 'too_large' ? 413 : 400, {
+      error: parsedBody.error === 'too_large' ? 'Requête trop volumineuse.' : 'Requête invalide.',
+    })
   }
+  const payload = parsedBody.data
 
   const bucketId = String(payload.bucketId ?? '')
   const storagePath = String(payload.storagePath ?? '')

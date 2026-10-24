@@ -1,8 +1,9 @@
+import { readJsonObject } from '../_shared/requestBody.ts'
 import { escapeHtml } from '../_shared/html.ts'
 import { isLikelyPdf } from '../_shared/pdf.ts'
 import { sanitizePdf } from '../_shared/pdfSanitizer.ts'
 import { getConfiguredKey } from '../_shared/config.ts'
-import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.110.8'
 import {
   describeBrevoFailure,
   sanitizeEmailSubject,
@@ -42,7 +43,7 @@ function normalizeEmailRecipients(value: unknown) {
 }
 
 async function getConfiguredRecipients(
-  adminClient: ReturnType<typeof createClient>,
+  adminClient: SupabaseClient,
 ) {
   const { data, error } = await adminClient
     .from('email_destinations')
@@ -75,7 +76,7 @@ function encodeBytesToBase64(bytes: Uint8Array) {
 }
 
 async function updateEmailStatus(
-  adminClient: ReturnType<typeof createClient>,
+  adminClient: SupabaseClient,
   submissionId: string,
   values: Record<string, unknown>,
 ) {
@@ -88,7 +89,7 @@ async function updateEmailStatus(
 }
 
 async function baseFailureResponse(
-  adminClient: ReturnType<typeof createClient>,
+  adminClient: SupabaseClient,
   submissionId: string,
   message: string,
   status: number,
@@ -113,7 +114,7 @@ Deno.serve(async (request) => {
 
   const jsonResponse = (status: number, body: unknown) => baseJsonResponse(status, body, request)
   const failureResponse = (
-    adminClient: ReturnType<typeof createClient>,
+    adminClient: SupabaseClient,
     submissionId: string,
     message: string,
     status: number,
@@ -165,16 +166,13 @@ Deno.serve(async (request) => {
     return jsonResponse(401, { error: 'Session invalide ou révoquée.' })
   }
 
-  let payload: Record<string, unknown>
-  try {
-    const body = await request.text()
-    if (new TextEncoder().encode(body).byteLength > MAX_REQUEST_BYTES) {
-      return jsonResponse(413, { error: 'Requête trop volumineuse.' })
-    }
-    payload = JSON.parse(body)
-  } catch {
-    return jsonResponse(400, { error: 'Requête invalide.' })
+  const parsedBody = await readJsonObject(request, MAX_REQUEST_BYTES)
+  if (parsedBody.error) {
+    return jsonResponse(parsedBody.error === 'too_large' ? 413 : 400, {
+      error: parsedBody.error === 'too_large' ? 'Requête trop volumineuse.' : 'Requête invalide.',
+    })
   }
+  const payload = parsedBody.data
 
   const submissionId = String(payload.submissionId ?? '').trim()
   const forceResend = payload.forceResend === true

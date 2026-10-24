@@ -46,6 +46,8 @@ jobs:
           supabase/tests/store-document-check.mjs
           supabase/tests/storage-cleanup-worker-check.mjs
           supabase/tests/query-bounds-check.mjs
+          supabase/tests/request-body-check.mjs
+          supabase/tests/build-auth-bypass-check.mjs
 
       - name: Install isolated PostgreSQL harness
         run: npm install --prefix /tmp/flashover-mfa-db-test --no-audit --no-fund @electric-sql/pglite@0.5.8
@@ -69,3 +71,5 @@ jobs:
           supabase/tests/carpool-lock-order-check.mjs
           supabase/tests/global-email-rate-limit-check.mjs
           supabase/tests/query-bounds-sql-check.mjs
+          supabase/tests/retained-records-check.mjs
+          supabase/tests/medical-ownership-window-check.mjs

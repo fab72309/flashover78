@@ -1,4 +1,5 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
+import { readJsonObject } from '../_shared/requestBody.ts'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.110.8'
 import {
   corsHeadersForRequest,
   preflightResponse,
@@ -64,7 +65,7 @@ function validateInvitationRedirect(value: unknown) {
 }
 
 async function writeAdminAudit(
-  adminClient: ReturnType<typeof createClient>,
+  adminClient: SupabaseClient,
   actorId: string,
   action: string,
   targetUserId: string | null,
@@ -222,17 +223,13 @@ Deno.serve(async (request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 
-  let payload: Record<string, unknown> = {}
-
-  try {
-    const body = await request.text()
-    if (new TextEncoder().encode(body).byteLength > 131_072) {
-      return jsonResponse(413, { error: 'Requête trop volumineuse.' })
-    }
-    payload = JSON.parse(body)
-  } catch {
-    payload = {}
+  const parsedBody = await readJsonObject(request, 131_072)
+  if (parsedBody.error) {
+    return jsonResponse(parsedBody.error === 'too_large' ? 413 : 400, {
+      error: parsedBody.error === 'too_large' ? 'Requête trop volumineuse.' : 'Requête invalide.',
+    })
   }
+  const payload = parsedBody.data
 
   const action = String(payload.action ?? '')
   const auditActionByRequest = new Map([
@@ -362,11 +359,33 @@ Deno.serve(async (request) => {
       }
     }
 
+    // Keep medical records and the identity behind business audit events.
+    // Database constraints are still required to close concurrent writes.
+    for (const [table, ownerColumn] of [
+      ['medical_follow_ups', 'user_id'],
+      ['main_courantes', 'user_id'],
+      ['equipment_repair_requests', 'user_id'],
+      ['admin_operation_audit', 'actor_id'],
+      ['training_audit_log', 'actor_id'],
+      ['document_audit_log', 'actor_id'],
+    ]) {
+      const { count, error: retentionError } = await adminClient
+        .from(table)
+        .select('id', { count: 'exact', head: true })
+        .eq(ownerColumn, userId)
+      if (retentionError || count === null) {
+        return jsonResponse(503, { error: 'Impossible de vérifier les conditions de suppression.' })
+      }
+      if (count > 0) {
+        return jsonResponse(409, { error: 'La conservation des données interdit la suppression de ce compte.' })
+      }
+    }
+
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId)
     if (deleteError) {
       if (/foreign key|violates/i.test(deleteError.message)) {
         return jsonResponse(409, {
-          error: 'Ce compte possède encore un document partagé qui doit être réattribué avant suppression.',
+          error: 'La conservation des données interdit la suppression de ce compte.',
         })
       }
       console.error('Unable to delete Auth user')

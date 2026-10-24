@@ -15,6 +15,7 @@ const legacyMigration = await readFile(
   'utf8',
 );
 const userId = '11111111-1111-4111-8111-111111111111';
+const quotaMigration = await readFile(new URL('../migrations/20261024162243_security_upload_quota_boundaries.sql', import.meta.url), 'utf8');
 const sessionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 test('catalogue Storage requires server finalization and consumes one-time approval', async (t) => {
@@ -84,6 +85,8 @@ test('catalogue Storage requires server finalization and consumes one-time appro
   await db.exec(legacyMigration);
   await db.exec(migration);
   await db.exec(legacyMigration);
+  await db.exec(quotaMigration);
+  await db.exec(quotaMigration);
   await db.exec(`
     create trigger resource_versions_validate_storage
     before insert on public.resource_versions
@@ -170,7 +173,7 @@ test('catalogue Storage requires server finalization and consumes one-time appro
     /Office legacy/,
   );
 
-  const quotaObjects = Array.from({ length: 197 }, (_, index) => {
+  const quotaObjects = Array.from({ length: 196 }, (_, index) => {
     const suffix = String(index).padStart(3, '0');
     return `insert into storage.objects values ('resources', '${userId}/quota/${suffix}.pdf', null, '{"size":"1","mimetype":"application/pdf"}'::jsonb);`;
   }).join('\n');
@@ -184,6 +187,13 @@ test('catalogue Storage requires server finalization and consumes one-time appro
     "select set_config('request.jwt.claims', $1, false)",
     [JSON.stringify({ role: 'service_role' })],
   );
+  assert.equal((await db.query('select count(*)::int as n from storage.objects')).rows[0].n, 200);
+  assert.equal((await db.query(
+    `select public.register_document_upload_approval('resources', $1, $2, 1, 'application/pdf') as approved`,
+    [boundaryPath, userId],
+  )).rows[0].approved, true);
+  await db.query(`insert into storage.objects values ('resources', $1, null, '{"size":"1","mimetype":"application/pdf"}'::jsonb)`,
+    [`${userId}/quota/excess.pdf`]);
   await assert.rejects(
     () => db.query(
       `select public.register_document_upload_approval('resources', $1, $2, 1, 'application/pdf')`,
@@ -191,4 +201,5 @@ test('catalogue Storage requires server finalization and consumes one-time appro
     ),
     /Quota documentaire atteint/,
   );
+  assert.equal((await db.query("select has_function_privilege('authenticated', 'public.register_document_upload_approval(text,text,uuid,bigint,text)', 'EXECUTE') as allowed")).rows[0].allowed, false);
 });

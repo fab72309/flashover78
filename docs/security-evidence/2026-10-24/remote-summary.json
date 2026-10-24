@@ -1,0 +1,91 @@
+{
+  "checked_at": "2026-10-24T16:29:04.472Z",
+  "supabase": {
+    "project": "Flashover78 (linked project)",
+    "status": "ACTIVE_HEALTHY",
+    "postgres": "17.6.1.104",
+    "plan": "free",
+    "edge_versions": {
+      "admin-users": 9,
+      "medical-follow-up-email": 8,
+      "main-courante-email": 5,
+      "equipment-repair-email": 5,
+      "store-form-pdf": 1,
+      "store-document": 2,
+      "storage-cleanup-worker": 1
+    },
+    "all_seven_verify_jwt": true,
+    "security_advisors": {
+      "rls_without_policy": [
+        "admin_operation_audit (intentional service-role write + guarded RPC read)"
+      ],
+      "graphql_authenticated_discovery": 18,
+      "authenticated_security_definer_rpc": 34,
+      "leaked_password_protection": "disabled"
+    },
+    "secret_names": [
+      "APP_ALLOWED_ORIGINS",
+      "APP_ALLOWED_REDIRECT_ORIGINS",
+      "BREVO_API_KEY",
+      "BREVO_FROM_EMAIL",
+      "BREVO_SENDER_NAME",
+      "STORAGE_CLEANUP_WORKER_SECRET",
+      "SUPABASE_ANON_KEY",
+      "SUPABASE_DB_URL",
+      "SUPABASE_JWKS",
+      "SUPABASE_PUBLISHABLE_KEYS",
+      "SUPABASE_SECRET_KEYS",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "SUPABASE_URL"
+    ],
+    "backups": "No usable backup or restoration evidenced; documentation reports none. Backup inventory not accessible through tools used.",
+    "migrations": {
+      "local_section": "20261024151739",
+      "remote_section": "20261024151827",
+      "same_name": "brulage_document_sections",
+      "content_equivalence": "not established"
+    },
+    "buckets": {
+      "all_private": true,
+      "objects": {
+        "brulage-documents": 29,
+        "main-courantes": 2,
+        "news-images": 0,
+        "sdis78-documents": 0,
+        "lectures-documents": 0,
+        "resources": 0,
+        "equipment-repair-requests": 0
+      }
+    }
+  },
+  "github": {
+    "source": "gh api repos/fab72309/flashover78 and branches/main/protection, actions/runs, actions/secrets, environments",
+    "public": true,
+    "main_sha": "e80aba9bf87408734dbc7531a657e375cd80ecda",
+    "protected": true,
+    "required_status": "check",
+    "strict": true,
+    "enforce_admins": true,
+    "force_push": false,
+    "deletion": false,
+    "conversation_resolution": true,
+    "linear_history": true,
+    "repository_secret_count": 0,
+    "environment_count": 0,
+    "latest_observed_run": "success for main SHA; does not cover these uncommitted changes"
+  },
+  "hosting": {
+    "source": "curl -fsSI https://app.flashover78.com ; ordinary public metadata fetch, no active attack probe",
+    "server": "cloudflare",
+    "hsts": "max-age=31536000; includeSubDomains",
+    "csp": "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'; full response in local temp log",
+    "frame": "DENY",
+    "nosniff": true,
+    "referrer": "no-referrer",
+    "html_cache": "public, max-age=0, must-revalidate",
+    "acao": "*",
+    "version_json": "HTML SPA fallback; no reliable release identity",
+    "control_plane": "No Cloudflare administrative access established; previews/DNS/rules/deployment source not verified"
+  },
+  "remote_mutations": "none by this audit"
+}

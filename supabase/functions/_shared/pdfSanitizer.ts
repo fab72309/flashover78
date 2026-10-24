@@ -1,4 +1,4 @@
-import { PDFDocument, PDFName } from 'npm:pdf-lib@1.17.1'
+import { PDFDict, PDFDocument, PDFName } from 'npm:pdf-lib@1.17.1'
 import { isLikelyPdf } from './pdf.ts'
 
 const DEFAULT_MAX_PDF_BYTES = 5 * 1024 * 1024
@@ -38,7 +38,7 @@ export async function sanitizePdf(bytes: Uint8Array, maxBytes = DEFAULT_MAX_PDF_
       updateMetadata: false,
     })
     const catalog = document.context.lookup(document.context.trailerInfo.Root)
-    if (!catalog || typeof catalog.delete !== 'function') return null
+    if (!(catalog instanceof PDFDict)) return null
 
     UNSAFE_CATALOG_KEYS.forEach((key) => catalog.delete(PDFName.of(key)))
     document.getPages().forEach((page) => {
