@@ -169,6 +169,7 @@ export default function BrulageDocumentHub({
         <DocumentUploadPanel
           label={uploadLabel}
           defaultCategory={category}
+          defaultDocumentSection="checklists"
           lockCategory
           onUploaded={loadDocuments}
         />

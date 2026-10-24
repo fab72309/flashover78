@@ -3,10 +3,14 @@ import { FolderOpen, Plus, UploadCloud, X } from 'lucide-react';
 import { createCatalogDocument } from '../services/supabaseService';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
-import type { ResourceCategory } from '../types';
+import type { BrulageDocumentSectionId, ResourceCategory } from '../types';
 import { RESOURCE_CATEGORY_LABELS } from '../utils/constants';
+import {
+  isBrulageDocumentCategory,
+} from '../utils/brulageDocuments';
 import { getUserFacingError } from '../utils/userFacingError';
 import { logClientFailure } from '../utils/clientDiagnostics';
+import DocumentSectionSelector from './DocumentSectionSelector';
 
 const HIDDEN_GENERAL_UPLOAD_CATEGORIES = new Set<ResourceCategory>([
   'BRULAGE_TDL_FO',
@@ -16,6 +20,7 @@ const HIDDEN_GENERAL_UPLOAD_CATEGORIES = new Set<ResourceCategory>([
 interface DocumentUploadPanelProps {
   label: string;
   defaultCategory?: ResourceCategory;
+  defaultDocumentSection?: BrulageDocumentSectionId;
   lockCategory?: boolean;
   initiallyOpen?: boolean;
   showTrigger?: boolean;
@@ -25,6 +30,7 @@ interface DocumentUploadPanelProps {
 export default function DocumentUploadPanel({
   label,
   defaultCategory = 'SDIS78',
+  defaultDocumentSection = 'references',
   lockCategory = false,
   initiallyOpen = false,
   showTrigger = true,
@@ -36,6 +42,7 @@ export default function DocumentUploadPanel({
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<ResourceCategory>(defaultCategory);
+  const [documentSection, setDocumentSection] = useState<BrulageDocumentSectionId>(defaultDocumentSection);
   const [tags, setTags] = useState('');
   const [versionLabel, setVersionLabel] = useState('1.0');
   const [authorName, setAuthorName] = useState(user?.displayName ?? '');
@@ -56,6 +63,7 @@ export default function DocumentUploadPanel({
         metadata: {
           title,
           category,
+          documentSection: isBrulageDocumentCategory(category) ? documentSection : null,
           tags: tags
             .split(',')
             .map((tag) => tag.trim())
@@ -70,6 +78,7 @@ export default function DocumentUploadPanel({
       setTitle('');
       setTags('');
       setVersionLabel('1.0');
+      setDocumentSection(defaultDocumentSection);
       setEffectiveAt('');
       setExpiresAt('');
       setOpen(false);
@@ -106,6 +115,13 @@ export default function DocumentUploadPanel({
               Renseignez les informations nécessaires pour retrouver et suivre ce document.
             </p>
           </div>
+
+          {isBrulageDocumentCategory(category) ? (
+            <DocumentSectionSelector
+              value={documentSection}
+              onChange={setDocumentSection}
+            />
+          ) : null}
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">

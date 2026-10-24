@@ -20,6 +20,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ConfirmationDialog from '../components/ConfirmationDialog';
+import DocumentSectionSelector from '../components/DocumentSectionSelector';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import {
@@ -36,6 +37,7 @@ import {
   updateDocumentMetadata,
 } from '../services/supabaseService';
 import type {
+  BrulageDocumentSectionId,
   Resource,
   ResourceCategory,
   ResourceVersion,
@@ -51,6 +53,10 @@ import {
   getResourceCategoryLabel,
 } from '../utils/documents';
 import { canContribute, isAdministrator } from '../utils/permissions';
+import {
+  getBrulageDocumentSection,
+  isBrulageDocumentCategory,
+} from '../utils/brulageDocuments';
 import { logClientFailure } from '../utils/clientDiagnostics';
 
 export default function DocumentDetail() {
@@ -561,6 +567,9 @@ function MetadataEditor({
   const { showToast } = useToast();
   const [title, setTitle] = useState(document.title);
   const [category, setCategory] = useState<ResourceCategory>(document.category);
+  const [documentSection, setDocumentSection] = useState<BrulageDocumentSectionId>(
+    document.documentSection ?? getBrulageDocumentSection(document),
+  );
   const [authorName, setAuthorName] = useState(document.authorName);
   const [tags, setTags] = useState(document.tags.join(', '));
   const [effectiveAt, setEffectiveAt] = useState(toDateInput(document.effectiveAt));
@@ -574,6 +583,7 @@ function MetadataEditor({
       const updatedDocument = await updateDocumentMetadata(document.id, {
         title,
         category,
+        documentSection: isBrulageDocumentCategory(category) ? documentSection : null,
         authorName,
         tags: tags.split(',').map((tag) => tag.trim()).filter(Boolean),
         effectiveAt: effectiveAt ? new Date(`${effectiveAt}T12:00:00`) : null,
@@ -608,6 +618,13 @@ function MetadataEditor({
             ))}
           </select>
         </label>
+        {isBrulageDocumentCategory(category) ? (
+          <DocumentSectionSelector
+            value={documentSection}
+            onChange={setDocumentSection}
+            name={`document-section-${document.id}`}
+          />
+        ) : null}
         <FormInput label="Auteur" value={authorName} onChange={setAuthorName} />
         <FormInput label="Tags" value={tags} onChange={setTags} />
         <div className="grid grid-cols-2 gap-3">

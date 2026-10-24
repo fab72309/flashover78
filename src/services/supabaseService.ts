@@ -13,6 +13,7 @@ import {
 import type {
   AppUser,
   AppRole,
+  BrulageDocumentSectionId,
   CalendarFormateurAssignment,
   CalendarEvent,
   CarpoolMyRequest,
@@ -47,6 +48,7 @@ import type {
 } from '../types';
 import { devUser, isDevAuthBypassEnabled } from '../utils/devAuth';
 import { getDocumentExpirationState } from '../utils/documents';
+import { isBrulageDocumentCategory } from '../utils/brulageDocuments';
 import {
   getEmailConfirmationRedirectUrl,
   getPasswordRecoveryRedirectUrl,
@@ -134,6 +136,7 @@ type ResourceRow = {
   id: string;
   title: string;
   category: ResourceCategory;
+  document_section: BrulageDocumentSectionId | null;
   tags: string[] | null;
   version_label: string;
   author_name: string;
@@ -356,6 +359,7 @@ let mockResources: Resource[] = [
     id: 'preview-resource-1',
     title: 'Référentiel caisson et phénomènes thermiques',
     category: 'SDIS78',
+    documentSection: null,
     fileUrl: '/app/resources/document/preview-resource-1',
     tags: ['caisson', 'sécurité', 'référentiel'],
     versionLabel: '2.1',
@@ -377,6 +381,7 @@ let mockResources: Resource[] = [
     id: 'preview-resource-2',
     title: 'Support de formation lecture du feu',
     category: 'LECTURES',
+    documentSection: null,
     fileUrl: '/app/resources/document/preview-resource-2',
     tags: ['lecture du feu', 'formation'],
     versionLabel: '1.0',
@@ -591,6 +596,7 @@ function mapResource(row: ResourceRow): Resource {
     id: row.id,
     title: row.title,
     category: row.category,
+    documentSection: row.document_section ?? null,
     fileUrl: `${APP_ROUTES.RESOURCE_DETAIL}/${row.id}`,
     tags: row.tags ?? [],
     versionLabel: row.version_label,
@@ -2871,7 +2877,7 @@ export async function searchDocuments(filters: DocumentFilters = {}) {
   }
 
   assertSupabaseConfigured();
-  const { data, error } = await supabase.rpc('search_documents', {
+  const { data, error } = await supabase.rpc('search_documents_with_sections', {
     p_query: filters.query?.trim() || null,
     p_category: filters.category ?? null,
     p_tag: filters.tag ?? null,
@@ -2908,7 +2914,7 @@ export async function getDocumentById(id: string) {
   }
 
   assertSupabaseConfigured();
-  const { data, error } = await supabase.rpc('search_documents', {
+  const { data, error } = await supabase.rpc('search_documents_with_sections', {
     p_query: null,
     p_category: null,
     p_tag: null,
@@ -3093,6 +3099,9 @@ export async function createCatalogDocument(input: {
       id,
       title: input.metadata.title,
       category: input.metadata.category,
+      documentSection: isBrulageDocumentCategory(input.metadata.category)
+        ? input.metadata.documentSection ?? 'references'
+        : null,
       fileUrl: `${APP_ROUTES.RESOURCE_DETAIL}/${id}`,
       tags: input.metadata.tags,
       versionLabel: input.metadata.versionLabel,
@@ -3130,9 +3139,12 @@ export async function createCatalogDocument(input: {
   }
 
   try {
-    const { data, error } = await supabase.rpc('create_document', {
+    const { data, error } = await supabase.rpc('create_document_with_section', {
       p_title: input.metadata.title,
       p_category: input.metadata.category,
+      p_document_section: isBrulageDocumentCategory(input.metadata.category)
+        ? input.metadata.documentSection ?? 'references'
+        : null,
       p_tags: input.metadata.tags,
       p_version_label: input.metadata.versionLabel,
       p_author_name: input.metadata.authorName,
@@ -3255,6 +3267,9 @@ export async function updateDocumentMetadata(
         ? {
             ...resource,
             ...metadata,
+            documentSection: isBrulageDocumentCategory(metadata.category)
+              ? metadata.documentSection ?? 'references'
+              : null,
             effectiveAt: metadata.effectiveAt ?? null,
             expiresAt: metadata.expiresAt ?? null,
             updatedAt: new Date(),
@@ -3265,10 +3280,13 @@ export async function updateDocumentMetadata(
   }
 
   assertSupabaseConfigured();
-  const { error } = await supabase.rpc('update_document_metadata', {
+  const { error } = await supabase.rpc('update_document_metadata_with_section', {
     p_resource_id: resourceId,
     p_title: metadata.title,
     p_category: metadata.category,
+    p_document_section: isBrulageDocumentCategory(metadata.category)
+      ? metadata.documentSection ?? 'references'
+      : null,
     p_tags: metadata.tags,
     p_author_name: metadata.authorName,
     p_effective_at: metadata.effectiveAt?.toISOString().slice(0, 10) ?? null,

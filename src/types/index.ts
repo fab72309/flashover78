@@ -5,6 +5,7 @@ export type ResourceCategory =
   | 'AUTRE'
   | 'BRULAGE_TDL_FO'
   | 'BRULAGE_MAF';
+export type BrulageDocumentSectionId = 'roles' | 'checklists' | 'references';
 export type DocumentExpirationState = 'all' | 'valid' | 'expiring' | 'expired';
 export type CarpoolTripStatus = 'open' | 'full' | 'cancelled' | 'completed';
 export type CarpoolRequestStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
@@ -121,6 +122,7 @@ export interface Resource {
   id: string;
   title: string;
   category: ResourceCategory;
+  documentSection: BrulageDocumentSectionId | null;
   fileUrl: string;
   tags: string[];
   versionLabel: string;
@@ -164,6 +166,7 @@ export interface DocumentFilters {
 export interface DocumentMetadataInput {
   title: string;
   category: ResourceCategory;
+  documentSection?: BrulageDocumentSectionId | null;
   tags: string[];
   versionLabel: string;
   authorName: string;
