@@ -1,5 +1,9 @@
 # Suivi médical formateur
 
+> Mise à jour de publication : les protections de conservation et fonctions
+> serveur sont appliquées ; voir [la note 0.19.1-alpha](RELEASE_0.19.1-alpha.md).
+> Les paragraphes datés du correctif local décrivent l'état avant publication.
+
 Le parcours interne `Brûlage > Suivi médical formateur` reprend les 18 éléments du Google Form `SUIVI MÉDICAL FORMATEUR` : identité du formateur, date et journée, lieu, formation, rôle, météo, température, hydratation, type de brûlage, durée sous ARI, décontamination, douche et observations post-brûlage.
 
 L’entrée est conditionnée par la fonction enregistrée dans le profil : un compte ayant une seule fonction parmi `RSFR`, `FOR INC` et `FOR BAT` ouvre directement le questionnaire ; un compte possédant plusieurs fonctions choisit la fonction avant l’accès ; un compte sans qualification n’y accède pas. Aucune fonction n’est cochée par défaut à la création d’un profil : les administrateurs attribuent explicitement les qualifications. Le même formulaire est adapté par la fonction sélectionnée et le rôle propose les trois valeurs utilisées par l’ajout calendrier.
@@ -47,10 +51,25 @@ supabase functions deploy store-form-pdf
 
 Les destinataires supplémentaires sont configurables depuis la section administrateur « Utilisateurs ». L’adresse email du compte authentifié est toujours ajoutée au suivi médical, même si la liste administrateur est vide. La main courante est envoyée aux destinataires « Main courante » et, lorsqu’une réparation est renseignée, aux destinataires « Demande de réparation ».
 
-En développement, le bypass n'est actif que lorsque le flag est explicite et
-que Vite est en mode développement ou sur localhost. Il ne doit jamais être
-configuré sur un build de production. Aucune donnée n’est alors envoyée vers
+Depuis le correctif local du 24 octobre 2026, le bypass exige simultanément
+`DEV=true`, `PROD=false` et `VITE_DEV_AUTH_BYPASS=true`. Le nom de mode `test`
+et l'hôte localhost ne suffisent plus à l'activer dans un build de production.
+La configuration Vite force en outre le flag à false pour toute commande build,
+même si NODE_ENV vaut development.
+Cette correction n'est pas encore publiée. Aucune donnée n’est alors envoyée vers
 Supabase et aucun email n’est expédié : la fiche et l’historique sont simulés
 localement. Si l’envoi serveur n’est pas disponible, le bouton de partage reste
 une action explicite de l’utilisateur ; les destinataires de ce partage doivent
 être contrôlés séparément de la RLS propriétaire.
+
+## Conservation des comptes — correctif local du 24 octobre 2026
+
+La suppression Auth pouvait entraîner les fiches médicales, les mains courantes
+et les demandes de réparation par cascade. Cette configuration est encore
+présente à distance lors de la lecture du 24 octobre. La nouvelle migration
+`20261024162125_security_preserve_retained_records.sql` remplace les six clés
+étrangères concernées (trois propriétaires de formulaires et trois acteurs de
+journaux métier) par `ON DELETE RESTRICT`. Le handler `admin-users` refuse aussi
+la suppression d'un compte lié à ces données. Ces correctifs locaux doivent être
+appliqués après autorisation distincte ; ils ne restaurent aucune donnée déjà
+perdue. Voir `SECURITY_AUDIT_2026-10-24.md` pour preuves, limites et déploiement.

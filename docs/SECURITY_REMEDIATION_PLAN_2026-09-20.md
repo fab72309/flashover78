@@ -1,12 +1,13 @@
 # Plan de remédiation et de vérification Flashover78 — 20 septembre 2026
 
 Ce document organise la suite de l’audit de sécurité sur la branche locale
-`codex/security-audit-2026-09-18`. Il ne constitue pas une autorisation de
-déploiement. Les lectures distantes du 25 septembre 2026 ont confirmé la cible
-Supabase/Cloudflare et l'état des migrations, Storage, fonctions, sauvegardes,
-previews et headers ; la restriction Cloudflare Access des previews a été
-activée. Aucune migration, donnée métier, email réel, rotation de secret ou
-déploiement applicatif n'a été exécuté.
+`codex/security-audit-2026-09-18`. Il ne constitue pas une garantie de sécurité
+en production. Les observations du 25 septembre 2026 décrivent l'état initial ;
+une exécution distante contrôlée a ensuite été réalisée le 1er octobre 2026,
+sans donnée métier, email réel, migration destructive, rotation de secret
+existant ni déploiement du frontend. La décision explicite a été de poursuivre
+sans sauvegarde préalable ; l'absence de point de restauration exploitable reste
+donc un risque résiduel majeur.
 
 ## Décisions métier intégrées
 
@@ -34,7 +35,39 @@ déploiement applicatif n'a été exécuté.
   pendant que la session est active : ce mécanisme n’est pas une garantie
   absolue.
 
-## État distant vérifié le 25 septembre 2026
+## État d’exécution distant — 1er octobre 2026
+
+- Les 43 migrations présentes sur le projet correspondent maintenant aux
+  migrations locales jusqu'à `20260920065639`. La migration
+  `20260919090000_active_session_rls.sql` a été rendue rejouable lorsque la
+  policy historique de mise à jour directe du covoiturage est absente, car les
+  RPC `SECURITY DEFINER` sont désormais le chemin prévu pour cette mutation.
+- Les sept fonctions Edge (`admin-users`, `medical-follow-up-email`,
+  `main-courante-email`, `equipment-repair-email`, `store-form-pdf`,
+  `store-document` et `storage-cleanup-worker`) sont actives avec `verify_jwt`
+  activé. Les secrets d'origines CORS/redirection et le secret dédié du worker
+  existent par nom ; aucune valeur secrète n'est reproduite ici.
+- Des appels synthétiques sans JWT ont confirmé un refus `401` pour les POST
+  protégés et, pour les six fonctions concernées, un preflight `204` sur
+  `https://app.flashover78.com` contre `403` sur localhost et une origine
+  inconnue. Le worker répond
+  `401` sans authentification et `405` à un preflight, conformément à son
+  endpoint POST réservé au scheduler. Aucun email ni donnée réelle n'a été
+  envoyé.
+- `npm run check`, les 28 tests DB isolés et les 39 tests Edge ont réussi en
+  local. La vérification SQL distante des métadonnées a confirmé la dernière
+  migration, les buckets privés et les tables de sécurité privées ; elle ne
+  remplace pas un E2E authentifié avec deux comptes synthétiques.
+- Le projet est en offre Free : WALG est actif, mais aucune sauvegarde
+  exploitable ni PITR n'est disponible. Cette étape a été volontairement
+  acceptée comme dérogation ; elle interdit de présenter un retour arrière de
+  données comme vérifié.
+- Le frontend/Cloudflare Pages n'a pas été publié depuis cette branche. Le
+  scheduler et les alertes du worker, l'inventaire historique/quarantaine
+  Storage, le réglage Auth Audit Logs, les E2E authentifiés, les seuils Brevo,
+  la CI et les headers runtime restent à vérifier ou à autoriser.
+
+## État distant vérifié le 25 septembre 2026 (historique avant exécution)
 
 - Le projet Supabase « Flashover78 » est lié au dépôt. L'historique distant
   s'arrête à `20260917172518`, qui correspond au SQL MFA/journal local ; les
@@ -124,11 +157,10 @@ Compléter l’inventaire par les résultats versionnés de :
 
 Dans cet ordre, après validation du plan de retour arrière :
 
-1. Vérifier une sauvegarde exploitable et un point de restauration identifié.
-   La cible actuelle renvoie une liste de sauvegardes vide ; tant qu'un
-   opérateur n'a pas créé ou confirmé ce point, la migration distante doit
-   rester bloquée. Une simple exportation de schéma ou un build réussi ne
-   constitue pas un retour arrière des données.
+1. **Dérogation décidée pour cette exécution :** aucune sauvegarde préalable
+   n'a été créée ni prouvée. Une simple exportation de schéma ou un build
+   réussi ne constitue pas un retour arrière des données ; si une prochaine
+   modification de données est envisagée, réévaluer ce risque avant d'agir.
 2. Appliquer les migrations dans une fenêtre contrôlée, puis vérifier chaque
    contrainte, policy, grant et signature RPC.
 3. Déployer les Edge Functions et le worker Storage avec leur version exacte,
@@ -183,10 +215,13 @@ OWASP ASVS 5.0.0 (mai 2025), WSTG 4.2 et API Security Top 10 2023 servent de
 référentiels ; les versions Supabase/SDK/Cloudflare/Brevo effectivement
 déployées doivent être relevées pendant l’inventaire.
 
-Tant que la séquence distante n’est pas autorisée et exécutée, restent non
-vérifiés : migration réelle, fonctions/worker réellement déployés, politiques
-Storage, sauvegardes/restauration, limites fournisseur, exécution CI, headers
-Cloudflare, previews, CORS runtime et concurrence PostgreSQL. Le maintien
-fonctionnel hors ligne implique aussi qu’une révocation distante ne peut pas
-annuler une consultation pendant la fenêtre hors connexion ; le TTL et le
-chiffrement réduisent l’exposition sans supprimer ce compromis métier.
+Les migrations et fonctions Edge sont maintenant déployées et les contrôles
+HTTP synthétiques ont été exécutés. Restent non vérifiés ou non publiés :
+frontend/headers Cloudflare, scheduler et alertes du worker, inventaire et
+quarantaine des objets historiques, E2E authentifié à deux propriétaires,
+réglage Auth Audit Logs, limites et alertes Brevo, exécution CI, validation des
+contraintes historiques `NOT VALID`, concurrence PostgreSQL réelle, restauration
+et sauvegardes (volontairement absentes à ce stade). Le maintien fonctionnel
+hors ligne implique aussi qu’une révocation distante ne peut pas annuler une
+consultation pendant la fenêtre hors connexion ; le TTL et le chiffrement
+réduisent l’exposition sans supprimer ce compromis métier.

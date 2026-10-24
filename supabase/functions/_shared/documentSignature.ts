@@ -44,8 +44,48 @@ function hasUnsafeArchiveEntry(name: string) {
 }
 
 function hasUnsafeRelationshipContent(bytes: Uint8Array) {
-  const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+  const text = decodePackageXml(bytes)
+  if (text === null) return true
   return /(?:TargetMode\s*=\s*["']External["']|vbaProject|oleObject|activeX|externalLinks|embeddings)/i.test(text)
+}
+
+// XML character references and alternate encodings must not hide active
+// package parts from the structural checks. Custom entities/DTDs are refused.
+function decodePackageXml(bytes: Uint8Array): string | null {
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    if (text.includes('\0') || /<!\s*(?:DOCTYPE|ENTITY)/i.test(text)) return null
+    const encoding = text.match(/<\?xml\b[^?]*\bencoding\s*=\s*["']([^"']+)["']/i)?.[1]
+    if (encoding && !/^(?:utf-8|utf8|us-ascii)$/i.test(encoding)) return null
+    return text.replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (_reference, value: string) => {
+      const point = value[0].toLowerCase() === 'x'
+        ? parseInt(value.slice(1), 16)
+        : parseInt(value, 10)
+      return String.fromCodePoint(point)
+    }).replace(/&(?:colon|sol|bsol);/gi, '\0')
+  } catch {
+    return null
+  }
+}
+
+function hasUnsafeOdfXml(bytes: Uint8Array) {
+  const text = decodePackageXml(bytes)
+  if (text === null || text.includes('\0')) return true
+  // XML prefixes may contain Unicode letters and combining marks. Match a
+  // conservative superset of XML name characters, excluding XML delimiters,
+  // so aliases cannot hide the local name and ordinary text stays intact.
+  if (/<\s*(?:[^\s<>/:="'?!]+:)?(?:scripts?|event-listeners?|object(?:-ole)?|plugin|applet|floating-frame)\b/iu.test(text)) return true
+  if (/(?:^|\s)(?:[^\s<>/:="'?!]+:)?(?:macro-name|event-name)\s*=/iu.test(text)) return true
+  if (/\bxml:base\s*=/i.test(text)) return true
+  const hrefs = text.matchAll(/(?:^|\s)(?:[^\s<>/:="'?!]+:)?href\s*=\s*(["'])(.*?)\1/gisu)
+  for (const match of hrefs) {
+    const target = match[2].trim()
+    if (/^[a-z][a-z0-9+.-]*:/i.test(target)
+      || target.startsWith('/') || target.includes('\\')
+      || target.split('/').includes('..')
+      || Array.from(target).some((character) => character.charCodeAt(0) <= 0x20)) return true
+  }
+  return false
 }
 
 /**
@@ -102,6 +142,9 @@ function hasSafeOfficePackage(bytes: Uint8Array, extension: string) {
   if (extension === 'docx' && !names.some((name) => /^word\/document\.xml$/i.test(name))) return false
   if (extension === 'pptx' && !names.some((name) => /^ppt\/presentation\.xml$/i.test(name))) return false
   if (extension === 'odt' && !names.some((name) => /^content\.xml$/i.test(name))) return false
+
+  if (extension === 'odt' && names.filter((name) => /\.xml$/i.test(name))
+    .some((name) => hasUnsafeOdfXml(archive[name]))) return false
 
   return names
     .filter((name) => /\.rels$/i.test(name))

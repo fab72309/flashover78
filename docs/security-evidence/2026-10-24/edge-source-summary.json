@@ -1,0 +1,60 @@
+{
+  "checked_at": "2026-10-24T16:27:01.086Z",
+  "source": "Supabase MCP get_edge_function, admin-users and store-document; read-only",
+  "evidence": [
+    {
+      "name": "admin-users",
+      "version": 9,
+      "verify_jwt": true,
+      "status": "ACTIVE",
+      "updated_at": 1790878233428,
+      "files": [
+        {
+          "name": "functions/admin-users/index.ts",
+          "bytes": 21298
+        },
+        {
+          "name": "functions/_shared/cors.ts",
+          "bytes": 1763
+        }
+      ],
+      "hasStreamingHelper": false,
+      "hasRetentionGuard": false
+    },
+    {
+      "name": "store-document",
+      "version": 2,
+      "verify_jwt": true,
+      "status": "ACTIVE",
+      "updated_at": 1790878232038,
+      "files": [
+        {
+          "name": "functions/store-document/index.ts",
+          "bytes": 6876
+        },
+        {
+          "name": "functions/_shared/pdf.ts",
+          "bytes": 1256
+        },
+        {
+          "name": "functions/_shared/cors.ts",
+          "bytes": 1763
+        },
+        {
+          "name": "functions/_shared/config.ts",
+          "bytes": 1101
+        },
+        {
+          "name": "functions/_shared/documentSignature.ts",
+          "bytes": 5585
+        },
+        {
+          "name": "functions/_shared/pdfSanitizer.ts",
+          "bytes": 1773
+        }
+      ],
+      "hasStreamingHelper": false,
+      "hasRetentionGuard": false
+    }
+  ]
+}

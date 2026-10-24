@@ -1,0 +1,184 @@
+{
+  "checked_at": "2026-10-24T16:38:48.643771+00:00",
+  "environment": {
+    "node": "25.2.1",
+    "npm": "11.6.2",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "4.1.12",
+    "supabase_js": "2.110.8",
+    "pglite": "0.5.8",
+    "lock_sha256": "ac652c1fd01c39343f8f1b53139d0a8cc95e4e5eaf99bb9a64545e4c0bf22a2a",
+    "installation": "npm ci --prefix /tmp/flashover78-security-validation --no-audit --no-fund"
+  },
+  "checks": [
+    {
+      "command": "npm run check",
+      "cwd": "/tmp/flashover78-security-validation",
+      "exit_code": 0,
+      "lint": "pass",
+      "test_files": 28,
+      "tests_passed": 126,
+      "build": "pass"
+    },
+    {
+      "command": "PGLITE_MODULE=/tmp/flashover-mfa-db-test/node_modules/@electric-sql/pglite/dist/index.js node --test --test-concurrency=2 supabase/tests/*-check.mjs",
+      "cwd": "/tmp/flashover78-security-validation",
+      "exit_code": 0,
+      "tests_passed": 87,
+      "tests_failed": 0
+    },
+    {
+      "command": "npm audit --omit=dev --json",
+      "vulnerabilities": 0
+    },
+    {
+      "command": "npm audit --json",
+      "development_moderate_advisories": 3,
+      "production_vulnerabilities": 0
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "dist_targeted_scan": {
+    "source_maps": 0,
+    "privileged_jwt": 0,
+    "supabase_secret_key": 0,
+    "private_key": 0,
+    "brevo_key": 0,
+    "exhaustive": false
+  },
+  "validated_source_files": {
+    ".github/workflows/security-check.yml": {
+      "sha256": "6226ca11fb8b27967ad0274aa316d4bdcc559f1bf16ece917b415fa1939b1deb",
+      "matches_clean_validation": true
+    },
+    "src/pages/DocumentDetail.offline.test.tsx": {
+      "sha256": "1bb1ba0d63d95c252bb5743135f50ca683606b6dfe6f1d838efe21943af35db6",
+      "matches_clean_validation": true
+    },
+    "src/pages/DocumentDetail.tsx": {
+      "sha256": "bd68f548418c3854e061a195ed94f10797db0203b20d9c35066e75ea816d11c0",
+      "matches_clean_validation": true
+    },
+    "src/services/offlineDocuments.test.ts": {
+      "sha256": "18995848c1a5cbfc264b474a27121d2cdf4d0755786408e530bb8986c8f808a6",
+      "matches_clean_validation": true
+    },
+    "src/services/supabaseService.training.test.ts": {
+      "sha256": "b3ce41b6b1cd386abadc224e605c2d7c174a1eab3192edd2434e014abfe772d7",
+      "matches_clean_validation": true
+    },
+    "src/services/supabaseService.ts": {
+      "sha256": "31546fc050d8f6e97502b8219d8f046b8e1c2f2bf921906bb8a557ae574e8714",
+      "matches_clean_validation": true
+    },
+    "src/utils/devAuth.test.ts": {
+      "sha256": "c0836a2af353f94a5d0b1a68fbeb250c0d31e20d79e162276f5948063df44497",
+      "matches_clean_validation": true
+    },
+    "src/utils/devAuth.ts": {
+      "sha256": "6b68c1d28b201c59df75051ca9928f8980b7ffcfab565c897141d9699f9a1f71",
+      "matches_clean_validation": true
+    },
+    "src/utils/offlineDocuments.ts": {
+      "sha256": "cc01909b2ed184b804c9673e6c090f12c6f4ed6f55000e6ac3c1ce1b72292585",
+      "matches_clean_validation": true
+    },
+    "supabase/functions/_shared/documentSignature.ts": {
+      "sha256": "f2f9f5a7aae65ec99f0163c7ff37243c04dbebb9be3fde1d474c69b5e10785c4",
+      "matches_clean_validation": true
+    },
+    "supabase/functions/_shared/requestBody.ts": {
+      "sha256": "eb0010f2e022cd8edd124de5352fd8da1e7069b2193aabda6f3a335a1d25ba76",
+      "matches_clean_validation": true
+    },
+    "supabase/functions/admin-users/index.ts": {
+      "sha256": "a468f9fcf4ed527526f8fd4c9a8a24dbfa686ea5b133f3d701e4f2d1e022c84f",
+      "matches_clean_validation": true
+    },
+    "supabase/functions/equipment-repair-email/index.ts": {
+      "sha256": "6e6df6393fce3d2c70b183dd67819a032cdf5fc685ec9aaa6c093e199657a041",
+      "matches_clean_validation": true
+    },
+    "supabase/functions/main-courante-email/index.ts": {
+      "sha256": "b69a1ee468f669e4c65384580af66783fe7f8222d9c7d7727d755c97fe396e43",
+      "matches_clean_validation": true
+    },
+    "supabase/functions/medical-follow-up-email/index.ts": {
+      "sha256": "2dc1c715f89bcc287858c39252585c4e980131d309bb208061b9f700bde00539",
+      "matches_clean_validation": true
+    },
+    "supabase/functions/store-document/index.ts": {
+      "sha256": "9256b5ffada52fa355eab4b8474ce29c89ed84bd97f78541ac26653c60e7ff11",
+      "matches_clean_validation": true
+    },
+    "supabase/functions/store-form-pdf/index.ts": {
+      "sha256": "9193c76c5f5f27cc26d8cdbc8b11b1d46cab82901044d603a718fc732a43d02a",
+      "matches_clean_validation": true
+    },
+    "supabase/migrations/20261024162125_security_preserve_retained_records.sql": {
+      "sha256": "c983fa3e9ef40a8f7e3847f9b31c06cc9cd1e103800efa14e1aeca2caeba8d6d",
+      "matches_clean_validation": true
+    },
+    "supabase/migrations/20261024162243_security_upload_quota_boundaries.sql": {
+      "sha256": "b2ee6b2f0a09d7c2749b1094e34ffcd336ed7b039bbbed41e1e712bd905ff038",
+      "matches_clean_validation": true
+    },
+    "supabase/tests/admin-api-check.mjs": {
+      "sha256": "9c85a0e7b0684f1cac64fdd9c4abe2e0ce7ae9624f2bbbc0274d2dc4ed15b432",
+      "matches_clean_validation": true
+    },
+    "supabase/tests/document-storage-finalization-check.mjs": {
+      "sha256": "11c484d36c1df6e890603e2705f6361ee90b10d41c5fe8e97a6cb99e6462650a",
+      "matches_clean_validation": true
+    },
+    "supabase/tests/medical-ownership-window-check.mjs": {
+      "sha256": "93479b456c94ac47a1ba808b476e293aa87714a1490338a8a2c353c41636eee7",
+      "matches_clean_validation": true
+    },
+    "supabase/tests/request-body-check.mjs": {
+      "sha256": "b5d2705803d207900400d53b695655a1b04a15feda2f3ab8d4e76b211bb8c4a2",
+      "matches_clean_validation": true
+    },
+    "supabase/tests/retained-records-check.mjs": {
+      "sha256": "f2ac79688847102882be6cdead001638e92498bcceaa885184db78cd8bc631cf",
+      "matches_clean_validation": true
+    },
+    "supabase/tests/storage-lifecycle-check.mjs": {
+      "sha256": "15a9a6bbe9c44bfa312f7fb05fa87758bdc16625335c16d8b0553be06505d104",
+      "matches_clean_validation": true
+    },
+    "supabase/tests/store-document-check.mjs": {
+      "sha256": "b30dd95dee83886f927744dbb9526021f4fd7b6c49cea1f854eb1eeba6efbf25",
+      "matches_clean_validation": true
+    },
+    "supabase/tests/build-auth-bypass-check.mjs": {
+      "sha256": "ff743a891510bfd89c82d7993cba4984c73fa92c14b3a45e3366d004665bf059",
+      "matches_clean_validation": true
+    },
+    "vite.config.ts": {
+      "sha256": "ab7ed5a7d5405d07e5756046aee1df5ab967a502953618b7587bb9602c868f03",
+      "matches_clean_validation": true
+    }
+  },
+  "limits": [
+    "PGlite minimal fixtures, not full Supabase",
+    "Auth/Brevo transports and browser persistence mocked",
+    "No production active test or publication",
+    "No restore test",
+    "No native browser or physical network outage"
+  ],
+  "build_auth_probe": {
+    "command": "node --test supabase/tests/build-auth-bypass-check.mjs",
+    "NODE_ENV": "development",
+    "VITE_DEV_AUTH_BYPASS": "true",
+    "mode": "test",
+    "before_build_guard": "actual bundled export true; regression fails",
+    "after_build_guard": "actual bundled export false; 1/1 passes",
+    "network": false,
+    "writes_bundle": false
+  }
+}

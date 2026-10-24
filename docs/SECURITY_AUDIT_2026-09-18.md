@@ -12,10 +12,46 @@ cache hors ligne, alignement des RPC documentaires de publication avec le rôle
 contributeur, suppression du défaut de qualification `RSFR`, restriction des
 destinataires email, lecture seule du calendrier pour les membres et
 chiffrement AES-GCM du cache documentaire hors ligne ont été ajoutés puis
-retestés localement. Les migrations
-restent préparées dans le dépôt : aucune n'a été appliquée à distance.
+retestés localement. L'exécution distante est documentée séparément ci-dessous ;
+elle ne constitue pas une preuve d'absence totale de vulnérabilités.
 
-## Mise à jour de vérification distante — 25 septembre 2026
+## Mise à jour d’exécution distante — 1er octobre 2026
+
+Cette mise à jour complète l'audit initial des 18–20 septembre et la lecture
+seule du 25 septembre. Les migrations et fonctions ont été appliquées au projet
+Supabase autorisé, sans sauvegarde préalable conformément à la décision
+explicite de poursuivre malgré l'offre Free. Aucun email réel, aucune ligne
+métier et aucune valeur de secret n'ont été exportés.
+
+- **Base de données.** Les 43 migrations distantes correspondent au dépôt
+  jusqu'à `20260920065639`. Le correctif local de
+  `20260919090000_active_session_rls.sql` rend conditionnelle la modification
+  d'une policy historique de covoiturage absente à distance ; les RPC prévues
+  restent le chemin de mutation.
+- **Edge Functions.** `admin-users`, `medical-follow-up-email`,
+  `main-courante-email`, `equipment-repair-email`, `store-form-pdf`,
+  `store-document` et `storage-cleanup-worker` sont actives avec
+  `verify_jwt=true`. Les noms des trois secrets ajoutés sont présents ; leurs
+  valeurs restent confidentielles.
+- **Contrôle réseau synthétique.** Les POST sans JWT ont tous renvoyé `401`.
+  Pour les six fonctions applicatives, le preflight de
+  `https://app.flashover78.com` a renvoyé `204` et ceux de localhost et d'une
+  origine inconnue `403`. Le worker a renvoyé
+  `401` sans JWT et `405` pour OPTIONS, ce qui correspond à son endpoint POST
+  réservé au scheduler. Aucun fournisseur email n'a été sollicité.
+- **Vérifications locales.** `npm run check` a réussi, ainsi que 28 tests DB
+  isolés et 39 tests Edge. Une requête SQL distante de métadonnées a confirmé
+  la dernière migration, les buckets privés et les tables de sécurité privées.
+- **Sauvegardes.** WALG est actif mais PITR est désactivé et aucune sauvegarde
+  exploitable n'est disponible sur l'offre Free. Cette décision est un risque
+  résiduel : une restauration de données n'est pas prouvée.
+- **Reste à faire.** Le frontend/Cloudflare n'est pas publié depuis cette
+  branche ; le scheduler/les alertes du worker, l'inventaire historique et la
+  quarantaine Storage, le réglage Auth Audit Logs, les E2E authentifiés à deux
+  propriétaires, les contrôles Brevo/CI/headers runtime et la validation des
+  contraintes historiques restent ouverts.
+
+## Mise à jour de vérification distante — 25 septembre 2026 (historique avant exécution)
 
 Une vérification en lecture seule a ensuite été réalisée sur la cible Supabase
 « Flashover78 », le dépôt GitHub et le projet Cloudflare Pages. Elle n'a extrait
@@ -71,11 +107,12 @@ synthétiques ni la preuve d'une restauration.
 
 ## Portée, méthode et niveau de preuve
 
-Audit local du dépôt sur la branche `codex/security-audit-2026-09-18`, sans
-déploiement, push, migration distante, email réel, changement DNS ou test actif
-de production. Les scénarios utilisent uniquement des identités et données
-synthétiques. L'absence de constat dans ce rapport ne garantit pas l'absence de
-vulnérabilité.
+L'audit initial porte sur le dépôt de la branche
+`codex/security-audit-2026-09-18`, avec des identités et données synthétiques,
+sans email réel ni changement DNS. La mise à jour du 1er octobre couvre en plus
+les migrations et fonctions Supabase effectivement déployées et des sondes HTTP
+non authentifiées. Aucun frontend n'a été publié depuis cette branche. L'absence
+de constat dans ce rapport ne garantit pas l'absence de vulnérabilité.
 
 Aucun `AGENTS.md` applicable n'a été trouvé dans ce dépôt ou ses répertoires
 parents ; les quatre documents de cadrage demandés ont été relus et
@@ -88,7 +125,7 @@ Quatre niveaux de preuve sont séparés :
 | Documenté | Affirmation d'un Markdown ou d'une feuille de route | Réconcilié avec le code ; plusieurs affirmations étaient obsolètes |
 | Présent dans le code | Contrôle réellement implémenté dans le dépôt | Inspecté statiquement sur `src/`, migrations et Edge Functions |
 | Testé localement | Contrôle exercé par Vitest, Node ou PostgreSQL PGlite isolé | Oui, détails dans « Validation » |
-| Vérifié à distance | Configuration/déploiement réellement observé sur un service autorisé | Supabase, Storage, Edge, sauvegardes, GitHub et Cloudflare vérifiés en lecture seule le 25 septembre 2026 |
+| Vérifié à distance | Configuration/déploiement réellement observé sur un service autorisé | Supabase/Storage/Edge et sauvegardes observés les 25 septembre et 1er octobre 2026 ; Cloudflare/GitHub restent issus de l'observation historique du 25 septembre |
 
 Référentiels consultés et revérifiés le 20 septembre 2026 :
 
@@ -224,20 +261,20 @@ policies RLS détaillées.
 
 | ID | Sévérité | Scénario / impact | Correction locale | Preuve locale | Distant |
 | --- | --- | --- | --- | --- | --- |
-| A-01 | Élevée | Un contributeur écrasait directement un objet Storage, contournant versions et audit | suppression UPDATE Storage, uploads `upsert:false`, extensions/namespace/quota côté policy et SQL, suppression d'orphelin propriétaire seulement | migration sections Storage et trigger version (lignes 177-438, 939-974) ; service ligne 740 ; test de build | migration non appliquée |
-| A-02 | Élevée | PATCH direct de `events.capacity` par contributeur/admin AAL1 contournait MFA/RPC/audit | privilèges INSERT/UPDATE par colonnes, capacité omise du client direct | migration lignes 150-175 ; PGlite refuse INSERT/UPDATE capacité et maintient titre | non appliqué |
-| A-03 | Élevée | Un passager accepté voyait les coordonnées des autres passagers | résultat contextuel : propriétaire/admin voit les contreparties ; passager voit seulement l'auteur | migration lignes 439-542 ; PGlite avec deux passagers + tiers | non appliqué |
-| A-04 | Moyenne | RPC legacy renvoyait demandes pending/rejected/cancelled | filtre strict `status='accepted'` | migration lignes 439-496 ; test legacy accepted/pending | non appliqué |
-| A-05 | Moyenne | propriétaire supprimait un PDF référencé ; suppression catalogue supprimait Storage avant DB | DELETE Storage permis seulement si non référencé ; suppression catalogue DB avant purge | migration lignes 403-438 ; service lignes 3108-3134 ; revue statique | non appliqué |
+| A-01 | Élevée | Un contributeur écrasait directement un objet Storage, contournant versions et audit | suppression UPDATE Storage, uploads `upsert:false`, extensions/namespace/quota côté policy et SQL, suppression d'orphelin propriétaire seulement | migration sections Storage et trigger version (lignes 177-438, 939-974) ; service ligne 740 ; test de build | migration déployée ; E2E Storage authentifié restant |
+| A-02 | Élevée | PATCH direct de `events.capacity` par contributeur/admin AAL1 contournait MFA/RPC/audit | privilèges INSERT/UPDATE par colonnes, capacité omise du client direct | migration lignes 150-175 ; PGlite refuse INSERT/UPDATE capacité et maintient titre | migration déployée ; vérification REST/RPC synthétique restante |
+| A-03 | Élevée | Un passager accepté voyait les coordonnées des autres passagers | résultat contextuel : propriétaire/admin voit les contreparties ; passager voit seulement l'auteur | migration lignes 439-542 ; PGlite avec deux passagers + tiers | migration déployée ; E2E à deux propriétaires restant |
+| A-04 | Moyenne | RPC legacy renvoyait demandes pending/rejected/cancelled | filtre strict `status='accepted'` | migration lignes 439-496 ; test legacy accepted/pending | migration déployée ; appel RPC synthétique restant |
+| A-05 | Moyenne | propriétaire supprimait un PDF référencé ; suppression catalogue supprimait Storage avant DB | DELETE Storage permis seulement si non référencé ; suppression catalogue DB avant purge | migration lignes 403-438 ; service lignes 3108-3134 ; revue statique | migration déployée ; scénario Storage authentifié restant |
 | A-06 | Élevée pour admin | JWT AAL2 restait privilégié après révocation de session | `private.has_active_session()` intégré au prédicat MFA | migration 8-49 ; PGlite avant/après suppression `auth.sessions` | durée JWT et déploiement inconnus |
-| A-08 | Élevée | un JWT encore valide pouvait appeler 18 RPC `SECURITY DEFINER` après révocation de sa session | ajout d'un garde `private.has_active_session()` aux signatures finales, avec contrôle rejouable et sans wrapper permissif | `20260919130000_rpc_active_session_hardening.sql` ; `rpc-active-session-check.mjs` (18/18, rejeu deux fois) | migration et E2E REST/RPC non appliqués |
-| A-09 | Moyenne | une suppression DB ou un upload PDF abandonné pouvait laisser des objets Storage sans reprise | quota PDF par propriétaire, trigger d'enqueue idempotent, RPC d'enqueue limité, worker service-role à secret dédié avec backoff et recontrôle de référence | `20260919140000_storage_lifecycle_hardening.sql`, `20260919160000_storage_cleanup_worker.sql` ; tests de cycle de vie et worker | worker/inventaire non déployés |
-| A-10 | Moyenne disponibilité | des annulations concurrentes de covoiturage pouvaient verrouiller une publication cible puis une contrepartie dans un ordre différent et provoquer un deadlock | remplacement additif de `cancel_carpool_post` : toutes les publications liées sont verrouillées par UUID croissant avant les lignes de correspondance, avec garde de session conservée | `20260919190100_carpool_lock_order_hardening.sql` ; `carpool-lock-order-check.mjs` (rejeu SQL et ordre vérifié) | migration non appliquée ; concurrence PostgreSQL distante à éprouver |
+| A-08 | Élevée | un JWT encore valide pouvait appeler 18 RPC `SECURITY DEFINER` après révocation de sa session | ajout d'un garde `private.has_active_session()` aux signatures finales, avec contrôle rejouable et sans wrapper permissif | `20260919130000_rpc_active_session_hardening.sql` ; `rpc-active-session-check.mjs` (18/18, rejeu deux fois) | migration déployée ; E2E REST/RPC révoqué restant |
+| A-09 | Moyenne | une suppression DB ou un upload PDF abandonné pouvait laisser des objets Storage sans reprise | quota PDF par propriétaire, trigger d'enqueue idempotent, RPC d'enqueue limité, worker service-role à secret dédié avec backoff et recontrôle de référence | `20260919140000_storage_lifecycle_hardening.sql`, `20260919160000_storage_cleanup_worker.sql` ; tests de cycle de vie et worker | migrations et worker déployés ; scheduler, alertes et inventaire restent ouverts |
+| A-10 | Moyenne disponibilité | des annulations concurrentes de covoiturage pouvaient verrouiller une publication cible puis une contrepartie dans un ordre différent et provoquer un deadlock | remplacement additif de `cancel_carpool_post` : toutes les publications liées sont verrouillées par UUID croissant avant les lignes de correspondance, avec garde de session conservée | `20260919190100_carpool_lock_order_hardening.sql` ; `carpool-lock-order-check.mjs` (rejeu SQL et ordre vérifié) | migration déployée ; concurrence PostgreSQL distante à éprouver |
 | B-01 | Élevée conditionnelle | première inscription d'une instance vide devenait administrateur | `sync_my_profile` crée toujours un membre et préserve les rôles existants | migration 58-115 ; PGlite premier compte + admin existant | bootstrap initial explicite requis |
 | B-02 | Moyenne | session détournée changeait email/mot de passe sans preuve récente | mot de passe actuel exigé, réauthentification avant mutation | service lignes 2113-2148 ; formulaires `AccountForms.tsx`/`ResetPassword.tsx` ; build/tests | réglage Auth distant inconnu |
 | B-03 | Moyenne | nouveaux mots de passe de six caractères acceptés localement | minimum 15, maximum 128 sur inscription/reset/admin ; connexion existante reste compatible | `authRecovery.ts:5`, Edge admin 482 ; tests Vitest | politique Supabase distante à aligner |
 | B-12 | Moyenne | les réponses Auth « email non confirmé » et certaines erreurs fournisseur pouvaient distinguer un compte ou révéler une allowlist SMTP | normalisation commune vers un message non énumérant, puis assainissement défensif dans les écrans connexion/récupération/réinitialisation | `authErrors.ts`, `userFacingError.ts`, tests Vitest et build ; recherches statiques sans message fournisseur rendu | comportement exact du fournisseur Auth et limites anti-abus distants non vérifiés |
-| B-04 | Moyenne | double envoi concurrent et rejeu illimité | transition atomique vers `sending`, cooldown 1 min, récupération 10 min, plafond 5 | migration lignes 706-848 ; PGlite deux revendications | fonctions/migration non déployées |
+| B-04 | Moyenne | double envoi concurrent et rejeu illimité | transition atomique vers `sending`, cooldown 1 min, récupération 10 min, plafond 5 | migration lignes 706-848 ; PGlite deux revendications | migration déployée ; fournisseur et E2E email réel non testés |
 | B-05 | Moyenne | création Auth réussie mais profil échoué laissait un compte incohérent ; confirmation/récupération pouvait utiliser une origine arbitraire | compensation par suppression, allowlist d'origine pour invitations et redirections Auth de confirmation/récupération, journal métier | `admin-users` local, `authRecovery.test.ts` et build | allowlist Supabase distante et comportement Auth réel à vérifier |
 | B-06 | Moyenne | journal Auth ne traçait pas les opérations métier et masquait un ancien admin rétrogradé | table append-only `admin_operation_audit`, tentative obligatoire avant mutation, lecture paginée admin AAL2 ; les succès dont l'écriture d'audit échoue renvoient désormais `audit_pending` avec `operationCompleted=true` pour réconciliation | migration d'audit ; `admin-api-check.mjs` (audit préalable et succès indisponible) | transaction inter-services impossible, conservation, reprise et alertes à compléter |
 | C-02 | Moyenne | appels directs envoyaient sièges/champs texte hors bornes | contraintes sièges 1..8, profils/événements, destinataires et formulaires avec bornes `NOT VALID` | migration lignes 153-176 et 849+ ; PGlite refuse titre/nom hors bornes | données historiques à inventorier/valider |
@@ -247,17 +284,17 @@ policies RLS détaillées.
 | D-01 | Élevée | document privé persistait après logout ou changement de compte | cache lié à l'ID, purge cache+métadonnées même si la déconnexion distante échoue, rétention locale maximale de 24 h ; octets chiffrés AES-GCM avec clé non exportable par compte ; fallback local non privilégié et session expirée refusée ; revalidation de l'utilisateur et de `require_active_session` avant restitution lorsque le navigateur est en ligne ; SW ne supprime plus arbitrairement ce cache lors d'une release | `offlineDocuments.ts`, `AuthContext.tsx`, tests lifecycle/chiffrement, build | navigateur de production et support IndexedDB/WebCrypto à vérifier |
 | D-02 | Moyenne | absence de CSP/frame/cache applicatifs explicites | `_headers` Cloudflare, JS/CSS inline de boot externalisés | build copie `_headers`, aucun script inline | headers absents de la production observée ; restriction previews activée mais nouveau déploiement à vérifier |
 | D-06 | Faible à moyenne | plusieurs écrans restituaient `error.message`, et la console navigateur recevait parfois l'objet d'erreur complet, pouvant révéler SQL/PostgREST, URL ou fournisseur | helper `getUserFacingError()` appliqué aux pages, composants et hook identifiés, y compris connexion/récupération/réinitialisation ; `logClientFailure()` remplace les payloads bruts par un contexte fixe ; détails conservés hors interface | `userFacingError.ts`, `authErrors.ts`, `clientDiagnostics.ts` + tests Vitest ; recherches `rg` sans sortie UI ni payload console brute ; build | interface et collecte de logs distantes non testées |
-| D-07 | Moyenne | les Edge Functions sensibles répondaient avec `Access-Control-Allow-Origin: *` | liste d'origines contrôlée par défaut et par `APP_ALLOWED_ORIGINS`, refus 403 des origines inconnues, préflight explicite | `_shared/cors.ts`, six fonctions, `cors-check.mjs` | trois secrets CORS/redirect absents et fonctions corrigées non déployées ; CORS runtime reste à tester |
+| D-07 | Moyenne | les Edge Functions sensibles répondaient avec `Access-Control-Allow-Origin: *` | liste d'origines contrôlée par défaut et par `APP_ALLOWED_ORIGINS`, refus 403 des origines inconnues, préflight explicite | `_shared/cors.ts`, six fonctions, `cors-check.mjs`, preflights distants `204/403` pour production et localhost | fonctions et secrets déployés ; le frontend/Cloudflare reste à vérifier, les défauts localhost ne s'appliquent qu'en absence de configuration |
 | D-08 | Moyenne | le Service Worker pouvait mettre en cache toute réponse GET, y compris de futures routes privées | version de cache v4 et cache limité aux extensions statiques ; templates/réponses API en réseau uniquement | `public/sw.js`, build ; revue statique | Cache Storage d'un navigateur réel non testé |
 | D-09 | Moyenne | des URLs Blob et des continuations asynchrones pouvaient survivre à logout/changement de compte dans le détail documentaire | nettoyage séparé des URLs ouverture/téléchargement, génération de chargement et contrôle de l'utilisateur courant avant tout état | `DocumentDetail.tsx`, build TypeScript | scénario navigateur réel à exécuter |
 | D-10 | Faible | les ouvertures de fenêtres dynamiques ne neutralisaient pas explicitement l'opener | `noopener,noreferrer` sur les parcours main courante/médical/réparation | trois utilitaires ; lint/build | navigateur réel non testé |
 | D-05 | Faible | l'écran de démarrage affichait le message brut d'une exception JavaScript et le bootstrap journalisait parfois son payload | message utilisateur générique ; journal bootstrap réduit à un contexte fixe, sans payload | `public/boot.js`, `main.tsx`, build local | en-têtes et collecte de console distants non vérifiés |
-| D-11 | Moyenne | les listes PostgREST et plusieurs RPC de collection pouvaient renvoyer une réponse non bornée, permettant une consommation excessive et des réponses instables | pagination par pages de 100 avec plafond explicite de 1 000 lignes et sonde anti-troncature pour les historiques/calendrier/covoiturage ; limites SQL de 200 documents/versions, 500 participants et 1 000 résumés | `src/utils/paginate.ts`, `paginate.test.ts`, `query-bounds-check.mjs` (2/2), lint/build | migration `20260919190000_query_response_bounds.sql` et limites client non appliquées à distance ; le catalogue au-delà de 200 devra disposer d'une UX de page/cursor avant de considérer le besoin fonctionnel clos |
+| D-11 | Moyenne | les listes PostgREST et plusieurs RPC de collection pouvaient renvoyer une réponse non bornée, permettant une consommation excessive et des réponses instables | pagination par pages de 100 avec plafond explicite de 1 000 lignes et sonde anti-troncature pour les historiques/calendrier/covoiturage ; limites SQL de 200 documents/versions, 500 participants et 1 000 résumés | `src/utils/paginate.ts`, `paginate.test.ts`, `query-bounds-check.mjs` (2/2), lint/build | migration déployée ; le catalogue au-delà de 200 devra disposer d'une UX de page/cursor avant de considérer le besoin fonctionnel clos |
 
-| B-13 | Moyenne | les contributeurs pouvaient ouvrir les écrans de publication documentaire, mais les RPC de création/version exigeaient encore administrateur AAL2, provoquant un refus incohérent ; l'édition de métadonnées restait administrative côté SQL | migration additive `20260919200000_document_contributor_publish.sql` remplace uniquement la garde des RPC de création/nouvelle version par `private.has_role('contributor')`, tandis que l'éditeur de métadonnées est affiché aux administrateurs seulement | `document-contributor-publish-check.mjs` (contributeur accepté, membre refusé, rejeu), build | migration non appliquée |
-| B-14 | Moyenne | la création de profil cochait implicitement `RSFR`, ce qui pouvait étendre l'accès formateur ou médical sans décision administrative | defaults SQL et normalisation frontend/Edge passent à `[]`; l'administrateur peut aussi retirer toutes les qualifications | `20260920064930_remove_default_trainer_qualification.sql`, `trainer-level-default-check.mjs`, tests Vitest, build | migration et profils historiques à vérifier |
-| B-15 | Moyenne | un membre authentifié pouvait lire les adresses opérationnelles de `email_destinations` via la Data API | policy RLS admin AAL2 ; les fonctions email continuent la lecture par client serveur ; aucune adresse n'est nécessaire au parcours membre | `20260920064931_restrict_email_destinations.sql`, `email-destinations-rls-check.mjs`, build | policy et fonctions déployées non vérifiées |
-| B-16 | Moyenne | les RPC de reporting de formation acceptaient une mutation directe d'un membre et la capacité restait admin-only malgré le rôle contributeur du planning | garde `private.has_role('contributor')` sur inscription/annulation/capacité ; UI capacité contributeur sans coordonnées participants ; membres en consultation | `20260920065639_training_planning_member_view_only.sql`, `training-planning-member-view-check.mjs`, build | migration et E2E REST/RPC non appliqués |
+| B-13 | Moyenne | les contributeurs pouvaient ouvrir les écrans de publication documentaire, mais les RPC de création/version exigeaient encore administrateur AAL2, provoquant un refus incohérent ; l'édition de métadonnées restait administrative côté SQL | migration additive `20260919200000_document_contributor_publish.sql` remplace uniquement la garde des RPC de création/nouvelle version par `private.has_role('contributor')`, tandis que l'éditeur de métadonnées est affiché aux administrateurs seulement | `document-contributor-publish-check.mjs` (contributeur accepté, membre refusé, rejeu), build | migration déployée ; E2E contributeur/membre restant |
+| B-14 | Moyenne | la création de profil cochait implicitement `RSFR`, ce qui pouvait étendre l'accès formateur ou médical sans décision administrative | defaults SQL et normalisation frontend/Edge passent à `[]`; l'administrateur peut aussi retirer toutes les qualifications | `20260920064930_remove_default_trainer_qualification.sql`, `trainer-level-default-check.mjs`, tests Vitest, build | migration déployée ; profils historiques à inventorier |
+| B-15 | Moyenne | un membre authentifié pouvait lire les adresses opérationnelles de `email_destinations` via la Data API | policy RLS admin AAL2 ; les fonctions email continuent la lecture par client serveur ; aucune adresse n'est nécessaire au parcours membre | `20260920064931_restrict_email_destinations.sql`, `email-destinations-rls-check.mjs`, build | migration déployée ; zéro ligne membre à confirmer par E2E synthétique |
+| B-16 | Moyenne | les RPC de reporting de formation acceptaient une mutation directe d'un membre et la capacité restait admin-only malgré le rôle contributeur du planning | garde `private.has_role('contributor')` sur inscription/annulation/capacité ; UI capacité contributeur sans coordonnées participants ; membres en consultation | `20260920065639_training_planning_member_view_only.sql`, `training-planning-member-view-check.mjs`, build | migration déployée ; E2E REST/RPC et concurrence restant |
 
 Les sévérités élevées exigent des préconditions (compte contributeur,
 administrateur AAL2 volé, passager accepté ou propriétaire). Elles restent
@@ -268,18 +305,18 @@ confidentialité ou une action privilégiée hors du chemin audité.
 
 | ID | Sévérité | Statut | Risque / blocage précis | Action nécessaire |
 | --- | --- | --- | --- | --- |
-| C-01 | Élevée | Corrigé localement, distant non vérifié | la fonction de suivi médical relit la ligne appartenant à l'appelant, génère la pièce jointe à partir des données persistées et la canonicalise avant Brevo ; aucun PDF ni nom de fichier fourni par le navigateur n'est utilisé pour l'email | déployer la fonction, vérifier le rôle/RLS sur l'instance et ajouter une analyse/quarantaine antivirus proportionnée si le niveau de menace l'exige |
-| C-04 | Élevée | Partiel | les PDF de main courante/réparation passent par `store-form-pdf`, avec octets contrôlés, suppression des actions/annotations actives et approbation à usage unique ; le PDF médical est maintenant généré puis canonicalisé côté serveur ; le catalogue passe par `store-document`, avec inspection ZIP bornée des paquets ODT/DOCX/PPTX (macros, ActiveX, objets embarqués, relations externes, traversal et tailles excessives refusés) ; les nouveaux `.doc`/`.ppt` legacy sont désormais refusés, mais les fichiers historiques ne bénéficient toujours pas d'une analyse antivirus complète | déployer les finaliseurs et fonctions email, inventorier/quarantainer les historiques puis ajouter une analyse antivirus proportionnée avant toute réintroduction des formats legacy |
-| A-07 | Moyenne | Partiel | les uploads documentaires directs sont maintenant refusés par Storage ; `store-document` impose une vérification d'octets, un quota de 200 objets/100 Mo par propriétaire et une approbation liée à la version ; une file et un worker sont préparés, mais les objets historiques/orphelins, `news-images` et la réconciliation du quota n'ont pas été inventoriés | exécuter `supabase/operations/storage-inventory.sql` en lecture seule, valider les contraintes puis autoriser la purge |
-| C-05 | Moyenne | Partiel | suppression DB puis Storage évite un catalogue cassé ; un échec Storage est signalé, mis en file et traité par le worker local avec retry/backoff et recontrôle des références, mais le worker n'est pas déployé ni alerté à distance | déployer le worker avec `STORAGE_CLEANUP_WORKER_SECRET` ou un bearer service-role strictement serveur, scheduler, alertes et smoke test synthétique |
+| C-01 | Élevée | Déployé ; E2E authentifié restant | la fonction de suivi médical relit la ligne appartenant à l'appelant, génère la pièce jointe à partir des données persistées et la canonicalise avant Brevo ; aucun PDF ni nom de fichier fourni par le navigateur n'est utilisé pour l'email | vérifier le rôle/RLS avec deux comptes synthétiques et ajouter une analyse/quarantaine antivirus proportionnée si le niveau de menace l'exige |
+| C-04 | Élevée | Partiel, finaliseurs déployés | les PDF de main courante/réparation passent par `store-form-pdf`, avec octets contrôlés, suppression des actions/annotations actives et approbation à usage unique ; le PDF médical est maintenant généré puis canonicalisé côté serveur ; le catalogue passe par `store-document`, avec inspection ZIP bornée des paquets ODT/DOCX/PPTX (macros, ActiveX, objets embarqués, relations externes, traversal et tailles excessives refusés) ; les nouveaux `.doc`/`.ppt` legacy sont désormais refusés, mais les fichiers historiques ne bénéficient toujours pas d'une analyse antivirus complète | inventorier/quarantainer les historiques puis ajouter une analyse antivirus proportionnée avant toute réintroduction des formats legacy |
+| A-07 | Moyenne | Partiel, worker déployé sans exploitation | les uploads documentaires directs sont maintenant refusés par Storage ; `store-document` impose une vérification d'octets, un quota de 200 objets/100 Mo par propriétaire et une approbation liée à la version ; la file et le worker existent à distance, mais les objets historiques/orphelins, `news-images` et la réconciliation du quota n'ont pas été inventoriés | exécuter `supabase/operations/storage-inventory.sql` en lecture seule, valider les contraintes puis autoriser la purge |
+| C-05 | Moyenne | Partiel, worker déployé | suppression DB puis Storage évite un catalogue cassé ; un échec Storage est signalé, mis en file et traité par le worker avec retry/backoff et recontrôle des références, mais aucun scheduler ni alerte distante n'est configuré | configurer le scheduler/les alertes et réaliser un smoke test synthétique sans traiter d'objets historiques |
 | B-07 | Faible à moyenne | Corrigé localement | les branches admin exposent désormais des messages publics génériques ; les erreurs fournisseur email sont réduites à un statut et un code HTTP, sans corps fournisseur | test Edge de validation, revue des fonctions email ; corrélation serveur et conservation restent à vérifier |
-| B-08 | Moyenne | Partiellement corrigé localement | plafond de cinq tentatives par soumission, quota atomique de 20 revendications par utilisateur et par heure et coupe-circuit transactionnel global de 200 revendications par heure pour les trois formulaires ; les seuils fournisseur, destinataire et coût Brevo restent distants | `security-hardening-check.mjs` 20 succès/21e refus ; `global-email-rate-limit-check.mjs` 200 comptes synthétiques acceptés puis 201e refusé ; seuils fournisseur et alertes à configurer |
-| B-09 | Faible | Corrigé localement | `admin-users` accepte page 1–1000 et 1–100 utilisateurs ; le client parcourt les pages jusqu'à `hasMore=false` | test Edge + build ; volume réel et comportement Auth distant non vérifiés |
-| B-10 | Moyenne | Corrigé localement, instance complète non vérifiable | une migration dédiée ajoute `private.has_active_session()` aux politiques RLS de lecture/écriture exposées ; les clauses obsolètes `news/news_reads` ont été retirées pour que la migration soit rejouable après leur suppression ; une session supprimée ne lit plus même un calendrier synthétique | appliquer `20260919090000_active_session_rls.sql` après inventaire des tokens et vérifier une instance Supabase complète |
-| B-11 | Moyenne | Corrigé localement, configuration distante non vérifiée | les cinq Edge Functions qui résolvent plusieurs clés n'acceptent plus la première valeur arbitraire d'un JSON ; une clé legacy ou `default` explicite est requise, sinon l'appel échoue fermé | `supabase/functions/_shared/config.ts`, `config.test.ts` ; build et tests Vitest | vérifier les secrets réellement configurés et leur correspondance au projet |
-| D-03 | Moyenne | Partiellement vérifié | workflow CI avec permissions minimales, actions épinglées, Node 22, lint/tests/build/audit, CORS, finaliseur PDF, worker et harnais d'autorisation PGlite/Edge isolés | PR de sécurité validée par CI et `main` protégée ; workflow encore absent du commit de production jusqu'à fusion |
+| B-08 | Moyenne | Déployé ; fournisseur et alertes non vérifiés | plafond de cinq tentatives par soumission, quota atomique de 20 revendications par utilisateur et par heure et coupe-circuit transactionnel global de 200 revendications par heure pour les trois formulaires ; les seuils fournisseur, destinataire et coût Brevo restent distants | tests locaux et fonctions actives ; vérifier les limites Brevo, les alertes et la facturation sans envoi réel |
+| B-09 | Faible | Déployé ; volume réel non vérifié | `admin-users` accepte page 1–1000 et 1–100 utilisateurs ; le client parcourt les pages jusqu'à `hasMore=false` | test Edge local et fonction active ; vérifier un volume synthétique borné |
+| B-10 | Moyenne | Déployé ; instance complète et E2E authentifié restant | une migration dédiée ajoute `private.has_active_session()` aux politiques RLS de lecture/écriture exposées ; les clauses obsolètes `news/news_reads` ont été retirées pour que la migration soit rejouable après leur suppression ; une session supprimée ne lit plus même un calendrier synthétique | migrations présentes à distance, tests PGlite réussis ; exercer deux comptes synthétiques via REST/RPC/Storage |
+| B-11 | Moyenne | Déployé ; configuration des valeurs non exposée | les cinq Edge Functions qui résolvent plusieurs clés n'acceptent plus la première valeur arbitraire d'un JSON ; une clé legacy ou `default` explicite est requise, sinon l'appel échoue fermé | secrets présents par nom, fonctions actives et sondes HTTP réussies ; vérifier les journaux minimisés et le comportement fournisseur |
+| D-03 | Moyenne | Partiellement vérifié | workflow CI avec permissions minimales, actions épinglées, Node 22, lint/tests/build/audit, CORS, finaliseur PDF, worker et harnais d'autorisation PGlite/Edge isolés | PR de sécurité validée par CI et `main` protégée ; aucune fusion ni exécution de production depuis cette branche |
 | D-04 | Moyenne | Corrigé localement, navigateur réel non vérifié | une durée maximale locale de 24 h est appliquée aux documents explicitement mis en cache ; les octets et l’index de métadonnées sont chiffrés AES-GCM avec une clé non exportable par compte ; une revalidation Auth (`getUser` + `require_active_session`) est exigée avant restitution lorsque le navigateur est en ligne ; par définition, un appareil réellement hors ligne ne peut toujours pas apprendre une révocation distante pendant cette fenêtre | vérifier un navigateur réel, le support IndexedDB/WebCrypto et le compromis de révocation hors ligne |
-| OPS-01 | Élevée non vérifiable | Ouvert | sauvegarde, restauration, alertes, quotas, rate limits, CAPTCHA, JWT et réponse à incident inconnus | contrôle distant autorisé + exercice de restauration |
+| OPS-01 | Élevée non vérifiable | Ouvert — risque accepté temporairement | sauvegarde et restauration indisponibles sur l'offre Free ; alertes, quotas fournisseur, CAPTCHA, JWT et réponse à incident restent partiellement inconnus | ne pas traiter l'absence de backup comme corrigée ; configurer les contrôles d'exploitation et décider ultérieurement d'une offre/stratégie de sauvegarde |
 
 ### Décisions métier intégrées et points encore ouverts
 
@@ -368,18 +405,18 @@ La table détaillée des constats ci-dessus fait foi. Synthèse opérationnelle 
 
 | Problème | Correction | Preuve | État local | État distant |
 | --- | --- | --- | --- | --- |
-| Autorisations DB/Storage/RPC | migrations additives de durcissement, publication documentaire contributeur, qualification explicite et planning membre en lecture seule | PGlite 5/5 + MFA 10/10 + harnais métier | préparée et testée localement | non appliquée |
-| Révocation de session des RPC | garde sur 18 fonctions `SECURITY DEFINER` | `rpc-active-session-check.mjs` 1/1, rejeu | préparée et testée structurellement | non appliquée, E2E distant requis |
-| Auth/MFA/comptes | session active, RLS active, réauth, bootstrap sûr, compensation | Vitest/build + tests Edge/PGlite/RLS | corrigé localement, migration à appliquer | réglages/déploiement inconnus |
-| Email/PDF | claim atomique, limites, quotas utilisateur et global, session active avant traitement, génération/canonicalisation serveur du PDF médical, finalisation/canonicalisation des PDF de formulaires et du catalogue | PGlite + `email-functions-check.mjs` 6/6 + `global-email-rate-limit-check.mjs` 1/1 + `medical-email-server-pdf-check.mjs` 1/1 + `store-form-pdf-check.mjs` 5/5 + `store-document-check.mjs` 8/8 + tests helper et bundles Edge | génération serveur et finaliseurs testés localement ; AV/historiques et Brevo restent partiels | Edge/Brevo non déployés |
-| Cycle de vie Storage | quota par propriétaire, contrôle taille/MIME/objet, queue et worker de purge avec backoff | tests cycle de vie + worker, 8 tests | corrigé et testé localement ; déploiement absent | inventaire/purge/alertes non vérifiés |
-| Concurrence covoiturage | verrouillage déterministe de toutes les publications liées avant annulation des correspondances | `carpool-lock-order-check.mjs` 1/1, rejeu SQL | correction additive préparée et testée structurellement | migration non appliquée ; test de concurrence PostgreSQL distant requis |
+| Autorisations DB/Storage/RPC | migrations additives de durcissement, publication documentaire contributeur, qualification explicite et planning membre en lecture seule | PGlite 5/5 + MFA 10/10 + harnais métier + 43 migrations distantes | testées localement | déployées ; E2E à deux propriétaires restant |
+| Révocation de session des RPC | garde sur 18 fonctions `SECURITY DEFINER` | `rpc-active-session-check.mjs` 1/1, rejeu | testée structurellement | migration déployée ; E2E distant requis |
+| Auth/MFA/comptes | session active, RLS active, réauth, bootstrap sûr, compensation | Vitest/build + tests Edge/PGlite/RLS | corrigé localement | fonctions/migrations déployées ; réglage Auth Audit Logs et E2E restant |
+| Email/PDF | claim atomique, limites, quotas utilisateur et global, session active avant traitement, génération/canonicalisation serveur du PDF médical, finalisation/canonicalisation des PDF de formulaires et du catalogue | PGlite + `email-functions-check.mjs` 6/6 + `global-email-rate-limit-check.mjs` 1/1 + `medical-email-server-pdf-check.mjs` 1/1 + `store-form-pdf-check.mjs` 5/5 + `store-document-check.mjs` 8/8 + sondes HTTP | génération serveur et finaliseurs testés localement | Edge déployées ; Brevo et E2E authentifié restent partiels |
+| Cycle de vie Storage | quota par propriétaire, contrôle taille/MIME/objet, queue et worker de purge avec backoff | tests cycle de vie + worker, 8 tests + déploiement worker | corrigé et testé localement | worker déployé ; inventaire, scheduler et alertes non vérifiés |
+| Concurrence covoiturage | verrouillage déterministe de toutes les publications liées avant annulation des correspondances | `carpool-lock-order-check.mjs` 1/1, rejeu SQL | correction testée structurellement | migration déployée ; test de concurrence PostgreSQL distant requis |
 | Bornes entrées directes | contraintes SQL sur formulaires, PDF et ancien covoiturage | `input-bounds-check.mjs` 1/1 | corrigé pour nouvelles écritures | historiques non validés |
 | Hors ligne | liaison au compte, revalidation Auth et `require_active_session` en ligne, purge logout, TTL 24 h et chiffrement AES-GCM par compte des octets et métadonnées | tests lifecycle + chiffrement (`offlineDocuments.test.ts`) | corrigé localement ; révocation pendant un vrai mode hors ligne impossible | navigateur déployé non testé |
-| Rôles métier | qualification sans défaut, destinataires admin-only et capacité de planning contributeur | trois harnais PGlite dédiés + Vitest/build | corrigé localement | migrations/RPC distants non appliqués |
-| Frontend/hébergement | CSP/headers/HSTS, CORS allowlist, cache SW restreint, erreurs UI génériques | build, scan artefact, `cors-check.mjs` | préparé et testé statiquement | Pages/branche/build vérifiés ; headers production absents avant livraison, CORS runtime à revalider |
+| Rôles métier | qualification sans défaut, destinataires admin-only et capacité de planning contributeur | trois harnais PGlite dédiés + Vitest/build + migrations distantes | corrigé localement | migrations déployées ; E2E membre/contributeur restant |
+| Frontend/hébergement | CSP/headers/HSTS, CORS allowlist, cache SW restreint, erreurs UI génériques | build, scan artefact, `cors-check.mjs`, preflights Edge distants | préparé et testé statiquement | Edge CORS vérifié ; frontend/headers Cloudflare non publiés depuis cette branche |
 | Fichiers actifs | extension, namespace, taille/MIME déclarés, finalisation/canonicalisation serveur des PDF de formulaires et du catalogue, inspection ZIP Office bornée, refus des nouveaux OLE legacy, immutabilité et lien objet-version | `store-form-pdf-check.mjs` 5/5 + `store-document-check.mjs` 8/8 + bundles Edge + inspection statique | partiel : objets historiques sans quarantaine/AV ; aucune analyse antivirus n'est intégrée | scan/quarantaine et inventaire absents |
-| Réponses et listes non bornées | pagination et plafonds de collection | `query-bounds-check.mjs` 2/2 + `paginate.test.ts` + build | corrigé localement avec erreur explicite au-delà de 1 000 lignes ; catalogue RPC plafonné à 200 | migration non appliquée ; UX de page catalogue >200 à compléter |
+| Réponses et listes non bornées | pagination et plafonds de collection | `query-bounds-check.mjs` 2/2 + `paginate.test.ts` + build | corrigé localement avec erreur explicite au-delà de 1 000 lignes ; catalogue RPC plafonné à 200 | migration déployée ; UX de page catalogue >200 à compléter |
 
 ## Séparation explicite des états
 
@@ -393,19 +430,16 @@ La table détaillée des constats ci-dessus fait foi. Synthèse opérationnelle 
    service-role strictement serveur, l'inspection ZIP Office et la sélection
    explicite des clés serveur, la qualification explicite, la policy des
    destinataires et le planning membre en lecture seule.
-2. **Éléments vérifiés à distance en lecture seule.** Projet Supabase ciblé,
-   historique de migrations, RLS/policies/grants/fonctions, buckets et
-   compteurs Storage, versions Edge et secrets par nom, état des sauvegardes,
-   configuration Pages/variables/previews, réponse HTTPS de production et état
-   GitHub ont été observés le 25 septembre 2026. Aucune donnée métier ni
-   valeur secrète n'a été exportée.
-3. **Actions de production restant à autoriser.** Créer ou confirmer un point
-   de restauration ; inventorier les contraintes historiques et les éventuels
-   fichiers hors périmètre ; appliquer les 16 migrations ; déployer les trois
-   fonctions manquantes et les versions corrigées ; renseigner les trois
-   secrets serveur absents ; configurer le scheduler/alertes ; déployer le
-   frontend ; exécuter les E2E synthétiques ; puis protéger `main` et vérifier
-   l'exécution CI.
+2. **Éléments vérifiés à distance.** Projet Supabase ciblé, historique de
+   migrations (43 versions), buckets, fonctions Edge actives, secrets par nom,
+   preflights/401 synthétiques et état des sauvegardes ont été observés le 1er
+   octobre 2026 sans exporter de donnée métier ni de valeur secrète. Les
+   observations Cloudflare/GitHub restent celles du 25 septembre.
+3. **Actions de production restant à autoriser.** Publier le frontend et les
+   headers Cloudflare ; configurer scheduler/alertes du worker ; inventorier et
+   traiter les historiques Storage ; vérifier Auth Audit Logs ; exécuter les
+   E2E authentifiés et la concurrence PostgreSQL ; contrôler Brevo, CI, les
+   contraintes historiques et une stratégie de sauvegarde future.
 4. **Points non vérifiés et décisions métier.** Contenu réel et quarantaine des
    fichiers, réglages fournisseur et quotas Brevo, limites CPU/mémoire et taille
    effective des requêtes Edge, CORS runtime, restauration des sauvegardes,
@@ -415,18 +449,23 @@ La table détaillée des constats ci-dessus fait foi. Synthèse opérationnelle 
 
 ## Vérifications distantes en lecture seule
 
-Les lectures du 25 septembre 2026 sont limitées aux métadonnées et compteurs :
+Les lectures du 25 septembre sont historiques ; les vérifications du 1er octobre
+ont ajouté les métadonnées et sondes synthétiques suivantes :
 
-- historique Supabase : 27 versions distantes, dont la version MFA/journal
-  `20260917172518`, et 16 migrations locales de durcissement en attente ;
-- RLS active sur 18 tables `public`, 26 policies `public`, aucune contrainte
-  `NOT VALID` observée ; la policy distante des destinataires autorise encore
-  `using true` pour `authenticated` ;
-- sept buckets privés, neuf objets au total dans les buckets non vides, zéro
-  référence cassée/orphelin/anomalie de namespace/legacy `.doc` ou `.ppt` dans
-  l'inventaire sans noms ;
-- quatre Edge Functions actives avec `verify_jwt=true`, trois fonctions locales
-  absentes à distance, et trois noms de secrets applicatifs manquants ;
+- historique Supabase : 43 versions distantes, dernière
+  `20260920065639`, correspondant à l'état local ;
+- les métadonnées RLS/policies et les contraintes ont été interrogées après
+  migration ; la sortie d'interface étant tronquée, les clauses exactes ne sont
+  pas reproduites comme preuve isolée. Les harnais locaux dédiés restent la
+  preuve du comportement attendu ;
+- sept buckets privés. Le comptage sans noms de septembre totalisait neuf objets
+  sans référence cassée/orphelin/anomalie de namespace/legacy `.doc` ou `.ppt` ;
+  cet inventaire doit être rejoué avant toute purge ;
+- sept Edge Functions actives avec `verify_jwt=true`, et trois secrets
+  applicatifs présents par nom ;
+- sondes non authentifiées : POST `401` pour les sept fonctions ; preflight
+  production `204` et localhost/inconnu `403` pour les six fonctions CORS ;
+  `storage-cleanup-worker` répond `405` à OPTIONS ;
 - sauvegardes : WALG actif, PITR désactivé, liste de sauvegardes vide ;
 - Cloudflare Pages : dépôt GitHub relié, production `main`, build `npm run
   build`/`dist`, previews restreintes par Access après activation, mais headers
@@ -446,15 +485,18 @@ Le déroulé détaillé, les responsables, les critères d’acceptation et le r
 arrière sont centralisés dans
 [`SECURITY_REMEDIATION_PLAN_2026-09-20.md`](./SECURITY_REMEDIATION_PLAN_2026-09-20.md).
 
-1. Créer un backup vérifié et exporter les policies, grants, fonctions, buckets,
-   réglages Auth et Edge déployés. Tester la restauration sur un environnement
-   non productif.
+1. La sauvegarde préalable n'a pas été créée, conformément à la décision
+   explicite de poursuivre sans sauvegarde. Ne pas présenter cette décision
+   comme une restauration testée ; reconsidérer une stratégie de backup avant
+   toute opération future à fort impact.
 2. Rejouer **toutes** les migrations sur une instance Supabase de test complète.
    Inventorier les lignes historiques violant les contraintes `NOT VALID`, puis
    les corriger et valider explicitement les contraintes.
 3. Préparer un administrateur de secours TOTP, la procédure de récupération et
    le provisionnement initial explicite (le premier inscrit n'est plus promu).
-4. Appliquer les migrations dans l'ordre, dont
+4. Les migrations listées ont été appliquées le 1er octobre 2026 ; pour une
+   prochaine modification, appliquer uniquement une nouvelle migration
+   additive et vérifier les mêmes invariants. L'historique déployé comprend :
    `20260918015321_security_audit_hardening.sql` puis
    `20260919090000_active_session_rls.sql`,
    `20260919130000_rpc_active_session_hardening.sql`,
@@ -474,9 +516,9 @@ arrière sont centralisés dans
    fonctions, schémas exposés, GraphQL/Realtime et caractère privé des
    buckets. Les contraintes `NOT VALID` doivent faire l'objet d'un inventaire
    puis d'une validation planifiée avant de les déclarer historiques conformes.
-5. Déployer les six Edge Functions (`admin-users`, `medical-follow-up-email`,
-   `main-courante-email`, `equipment-repair-email`, `store-form-pdf` et
-   `store-document`) avec les
+5. Les sept Edge Functions (`admin-users`, `medical-follow-up-email`,
+   `main-courante-email`, `equipment-repair-email`, `store-form-pdf`,
+   `store-document` et `storage-cleanup-worker`) sont maintenant déployées avec les
    secrets serveur, une valeur `APP_ALLOWED_ORIGINS` exacte pour CORS et une valeur
    `APP_ALLOWED_REDIRECT_ORIGINS` exacte pour les redirections d'invitation.
    Ne pas envoyer d'email réel pendant le smoke test sans autorisation
@@ -486,9 +528,9 @@ arrière sont centralisés dans
 7. Exécuter les E2E synthétiques : deux propriétaires, rôles cumulatifs, AAL1,
    AAL2 TOTP, facteur supprimé, session révoquée, appels REST/RPC/Storage
    directs, cache après logout, concurrence d'inscription et d'email.
-8. Déployer séparément `supabase/functions/storage-cleanup-worker` avec
-   `STORAGE_CLEANUP_WORKER_SECRET`, la clé service-role uniquement côté Edge,
-   un scheduler et des alertes. Le scheduler peut envoyer le secret dédié dans
+8. Le worker `supabase/functions/storage-cleanup-worker` est déployé avec
+   `STORAGE_CLEANUP_WORKER_SECRET` et la clé service-role uniquement côté Edge.
+   Son scheduler et ses alertes restent à configurer. Le scheduler pourra envoyer le secret dédié dans
    `x-storage-cleanup-token` (avec une configuration `verify_jwt` adaptée) ou le
    bearer service-role afin de conserver la vérification JWT native ; dans les
    deux cas, aucune clé ne doit être exposée au frontend.
@@ -510,12 +552,11 @@ pas une désactivation du contrôle. Les objets `sending` peuvent être remis en
 
 Des vulnérabilités d'autorisation, de confidentialité, de révocation de session,
 de rejeu email, de bornes d'entrée, d'erreurs trop détaillées et de cache privé
-étaient réellement présentes dans le code. Des correctifs locaux sont
-maintenant préparés et testés, y compris les gardes des RPC, les contraintes
-résiduelles, la qualification explicite, les destinataires admin-only, le
-planning membre en lecture seule, le cache chiffré et la queue Storage. Aucun
-correctif n'est actif en production tant que migrations, Edge Functions, worker
-de purge et frontend ne sont pas déployés puis vérifiés. L'analyse des
-octets/quarantaine, la réconciliation des quotas et orphelins Storage, la
-validation historique des contraintes et l'exploitation restent ouverts. Ce bilan ne
-fournit aucune garantie d'absence totale de vulnérabilités.
+étaient réellement présentes dans le code. Les migrations et fonctions Edge sont
+maintenant déployées et leurs contrôles locaux/distants limités sont documentés.
+Le frontend Cloudflare, le scheduler/les alertes du worker, l'inventaire et la
+quarantaine Storage, les E2E authentifiés, Auth Audit Logs, les limites Brevo,
+la concurrence PostgreSQL, les contraintes historiques et toute restauration
+restent ouverts. L'absence de sauvegarde est un risque explicitement accepté,
+pas une correction. Ce bilan ne fournit aucune garantie d'absence totale de
+vulnérabilités.

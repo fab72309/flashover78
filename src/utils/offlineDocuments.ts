@@ -9,8 +9,9 @@ export const OFFLINE_DOCUMENT_ENCRYPTION_VERSION = '1';
 const OFFLINE_DOCUMENT_KEY_DATABASE = 'flashover78-offline-document-keys-v1';
 const OFFLINE_DOCUMENT_KEY_STORE = 'keys';
 export const OFFLINE_DOCUMENT_METADATA_STORE = 'metadata';
-export const OFFLINE_DOCUMENT_TIMESTAMPS_STORE = 'timestamps';
-const OFFLINE_DOCUMENT_DATABASE_VERSION = 2;
+export const OFFLINE_DOCUMENT_TIMESTAMPS_STORE = 'timestamps-v2';
+const LEGACY_TIMESTAMPS_STORE = 'timestamps';
+const OFFLINE_DOCUMENT_DATABASE_VERSION = 3;
 
 type OfflineDocumentTimestamps = Record<string, number>;
 
@@ -41,6 +42,9 @@ function openOfflineKeyDatabase(): Promise<IDBDatabase> {
       }
       if (!request.result.objectStoreNames.contains(OFFLINE_DOCUMENT_TIMESTAMPS_STORE)) {
         request.result.createObjectStore(OFFLINE_DOCUMENT_TIMESTAMPS_STORE);
+      }
+      if (request.result.objectStoreNames.contains(LEGACY_TIMESTAMPS_STORE)) {
+        request.result.deleteObjectStore(LEGACY_TIMESTAMPS_STORE);
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -136,7 +140,7 @@ async function getOfflineOwnerMarker(userId: string) {
     'SHA-256',
     new TextEncoder().encode(userId),
   );
-  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('');
+  return `v2:${Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
 export async function getOfflineDocumentEncryptionKey(userId: string): Promise<CryptoKey> {
@@ -160,14 +164,22 @@ export async function getOfflineDocumentEncryptionKey(userId: string): Promise<C
       false,
       ['encrypt', 'decrypt'],
     );
-    await new Promise<void>((resolve, reject) => {
+    return await new Promise<CryptoKey>((resolve, reject) => {
       const transaction = database.transaction(OFFLINE_DOCUMENT_KEY_STORE, 'readwrite');
-      transaction.objectStore(OFFLINE_DOCUMENT_KEY_STORE).put(generatedKey, userId);
-      transaction.oncomplete = () => resolve();
+      const store = transaction.objectStore(OFFLINE_DOCUMENT_KEY_STORE);
+      const request = store.get(userId);
+      let selectedKey = generatedKey;
+      request.onsuccess = () => {
+        if (request.result) {
+          selectedKey = request.result as CryptoKey;
+        } else {
+          store.put(generatedKey, userId);
+        }
+      };
+      transaction.oncomplete = () => resolve(selectedKey);
       transaction.onerror = () => reject(transaction.error ?? new Error('Enregistrement de la clé hors ligne impossible.'));
       transaction.onabort = () => reject(transaction.error ?? new Error('Enregistrement de la clé hors ligne impossible.'));
     });
-    return generatedKey;
   } finally {
     database.close();
   }
@@ -303,31 +315,47 @@ async function readCacheTimestamps(userId: string): Promise<OfflineDocumentTimes
     return {};
   }
 
-  const key = await getOfflineDocumentEncryptionKey(userId);
-  const value = await readEncryptedOfflineStore<OfflineDocumentTimestamps>(
-    OFFLINE_DOCUMENT_TIMESTAMPS_STORE,
-    userId,
-    key,
-  );
-  if (!value || typeof value !== 'object') {
-    return {};
+  const database = await openOfflineKeyDatabase();
+  let entries: IDBValidKey[];
+  try {
+    entries = await new Promise<IDBValidKey[]>((resolve, reject) => {
+      const transaction = database.transaction(OFFLINE_DOCUMENT_TIMESTAMPS_STORE, 'readonly');
+      const request = transaction.objectStore(OFFLINE_DOCUMENT_TIMESTAMPS_STORE).getAllKeys();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error('Lecture des échéances impossible.'));
+    });
+  } finally {
+    database.close();
   }
-  return Object.fromEntries(
-    Object.entries(value).filter(([, timestamp]) => typeof timestamp === 'number'),
-  ) as OfflineDocumentTimestamps;
+  const key = await getOfflineDocumentEncryptionKey(userId);
+  const timestamps: OfflineDocumentTimestamps = {};
+  for (const entry of entries) {
+    if (typeof entry !== 'string') continue;
+    const [owner, resourceId] = JSON.parse(entry) as [unknown, unknown];
+    if (owner !== userId || typeof resourceId !== 'string') continue;
+    const value = await readEncryptedOfflineStore<number>(
+      OFFLINE_DOCUMENT_TIMESTAMPS_STORE, entry, key,
+    );
+    timestamps[resourceId] = typeof value === 'number' ? value : Number.NaN;
+  }
+  return timestamps;
 }
 
-async function writeCacheTimestamps(userId: string, value: OfflineDocumentTimestamps) {
-  if (Object.keys(value).length === 0) {
-    await deleteEncryptedOfflineStoreEntry(OFFLINE_DOCUMENT_TIMESTAMPS_STORE, userId);
-    return;
-  }
-  await writeEncryptedOfflineStore(
+function timestampEntryKey(userId: string, resourceId: string) {
+  return JSON.stringify([userId, resourceId]);
+}
+
+export async function hasFreshOfflineDocumentTimestamp(
+  resourceId: string, userId: string, now = Date.now(),
+) {
+  const cachedAt = await readEncryptedOfflineStore<number>(
     OFFLINE_DOCUMENT_TIMESTAMPS_STORE,
-    userId,
-    value,
+    timestampEntryKey(userId, resourceId),
     await getOfflineDocumentEncryptionKey(userId),
   );
+  return typeof cachedAt === 'number' && Number.isFinite(cachedAt)
+    && cachedAt >= 0 && cachedAt <= now
+    && now - cachedAt < OFFLINE_DOCUMENT_CACHE_MAX_AGE_MS;
 }
 
 export async function markOfflineDocumentCached(
@@ -336,22 +364,27 @@ export async function markOfflineDocumentCached(
   cachedAt = Date.now(),
 ) {
   if (typeof window === 'undefined') return;
-  const timestamps = await readCacheTimestamps(userId);
-  timestamps[resourceId] = cachedAt;
-  await writeCacheTimestamps(userId, timestamps);
+  // Each document has its own encrypted entry. A single transactional put
+  // cannot lose another document's deadline, including across browser tabs.
+  await writeEncryptedOfflineStore(
+    OFFLINE_DOCUMENT_TIMESTAMPS_STORE,
+    timestampEntryKey(userId, resourceId),
+    cachedAt,
+    await getOfflineDocumentEncryptionKey(userId),
+  );
 }
 
 export async function isOfflineDocumentOwner(userId: string) {
   if (typeof window === 'undefined') return false;
-  return window.localStorage.getItem(OFFLINE_DOCUMENT_OWNER_STORAGE_KEY)
-    === await getOfflineOwnerMarker(userId);
+  const expectedMarker = await getOfflineOwnerMarker(userId);
+  return window.localStorage.getItem(OFFLINE_DOCUMENT_OWNER_STORAGE_KEY) === expectedMarker;
 }
 
 export async function clearOfflineDocumentTimestamp(resourceId: string, userId: string) {
   if (typeof window === 'undefined') return;
-  const timestamps = await readCacheTimestamps(userId);
-  delete timestamps[resourceId];
-  await writeCacheTimestamps(userId, timestamps);
+  await deleteEncryptedOfflineStoreEntry(
+    OFFLINE_DOCUMENT_TIMESTAMPS_STORE, timestampEntryKey(userId, resourceId),
+  );
 }
 
 export async function purgeExpiredOfflineDocumentData(
@@ -380,7 +413,8 @@ export async function purgeExpiredOfflineDocumentData(
     return;
   }
   const expiredIds = Object.entries(timestamps)
-    .filter(([, cachedAt]) => now - cachedAt >= OFFLINE_DOCUMENT_CACHE_MAX_AGE_MS)
+    .filter(([, cachedAt]) => !Number.isFinite(cachedAt) || cachedAt < 0
+      || cachedAt > now || now - cachedAt >= OFFLINE_DOCUMENT_CACHE_MAX_AGE_MS)
     .map(([resourceId]) => resourceId);
 
   if (expiredIds.length === 0) return;
@@ -418,10 +452,7 @@ export async function purgeExpiredOfflineDocumentData(
     return;
   }
 
-  for (const resourceId of expiredIds) {
-    delete timestamps[resourceId];
-  }
-  await writeCacheTimestamps(userId, timestamps);
+  await Promise.all(expiredIds.map((resourceId) => clearOfflineDocumentTimestamp(resourceId, userId)));
 }
 
 export async function clearOfflineDocumentData() {

@@ -80,6 +80,10 @@ export default function DocumentDetail() {
     const cachedUrl = resource.isOfflineSelected
       ? await getCachedDocumentUrl(resource)
       : null;
+    if (!navigator.onLine) {
+      if (!cachedUrl) throw new Error('Document hors ligne indisponible ou expiré.');
+      return { openUrl: cachedUrl, downloadUrl: cachedUrl };
+    }
     const nextOpenUrl = cachedUrl ?? await getDocumentDownloadUrl(resource);
     return {
       openUrl: nextOpenUrl,
@@ -104,6 +108,10 @@ export default function DocumentDetail() {
       return;
     }
 
+    setDocument(null);
+    setOpenUrl(null);
+    setDownloadUrl(null);
+    setVersions([]);
     setLoading(true);
     setError(null);
     try {
@@ -111,12 +119,14 @@ export default function DocumentDetail() {
       if (!isCurrent()) return;
       if (!nextDocument) {
         setDocument(null);
-        setError('Ce document est introuvable.');
+        setError(navigator.onLine
+          ? 'Ce document est introuvable.'
+          : 'Ce document n’est pas disponible hors ligne ou sa conservation de 24 heures a expiré.');
         return;
       }
 
       const [nextVersions, nextUrls] = await Promise.all([
-        listDocumentVersions(id),
+        navigator.onLine ? listDocumentVersions(id) : Promise.resolve([]),
         prepareUrls(nextDocument),
       ]);
       if (!isCurrent()) {
@@ -130,10 +140,13 @@ export default function DocumentDetail() {
       setDownloadUrl(nextUrls.downloadUrl);
       setVersions(nextVersions);
     } catch {
+      if (!isCurrent()) return;
       logClientFailure('Chargement des versions documentaires impossible');
-      setError('Impossible de charger ce document.');
+      setError(navigator.onLine
+        ? 'Impossible de charger ce document.'
+        : 'Ce document n’est pas disponible hors ligne ou sa conservation de 24 heures a expiré.');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, [id, prepareUrls, user?.id]);
 
@@ -423,6 +436,7 @@ export default function DocumentDetail() {
             </a>
             <a
               href={downloadUrl ?? undefined}
+              download={downloadUrl?.startsWith('blob:') ? document.originalFilename : undefined}
               target="_blank"
               rel="noopener noreferrer"
               aria-disabled={!downloadUrl}
@@ -444,7 +458,9 @@ export default function DocumentDetail() {
           <div>
             <h2 className="text-headline-lg text-on-surface">Historique des versions</h2>
             <p className="text-body-md text-on-surface-variant">
-              {versions.length} version{versions.length > 1 ? 's' : ''} conservée{versions.length > 1 ? 's' : ''}
+              {navigator.onLine
+                ? `${versions.length} version${versions.length > 1 ? 's' : ''} conservée${versions.length > 1 ? 's' : ''}`
+                : 'L’historique sera disponible au retour du réseau.'}
             </p>
           </div>
         </div>

@@ -1,17 +1,9 @@
 import type { AppUser } from '../types';
 
-const isLocalPreviewHost =
-  typeof window !== 'undefined' &&
-  ['localhost', '127.0.0.1'].includes(window.location.hostname);
-
-const isTestEnvironment = import.meta.env.MODE === 'test';
-
 export const isDevAuthBypassEnabled =
-  isTestEnvironment ||
-  (
-    String(import.meta.env.VITE_DEV_AUTH_BYPASS || 'false') === 'true' &&
-    (import.meta.env.DEV || isLocalPreviewHost)
-  );
+  import.meta.env.DEV &&
+  !import.meta.env.PROD &&
+  String(import.meta.env.VITE_DEV_AUTH_BYPASS || 'false') === 'true';
 
 const devUserDisplayName = import.meta.env.VITE_DEV_USER_NAME || 'Mode Dev';
 const [devFirstName = 'Mode', ...devLastNameParts] = devUserDisplayName.split(' ');

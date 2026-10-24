@@ -5,14 +5,16 @@ Les migrations Supabase restent la source de vérité pour la base de données.
 
 ## Lot 1 - Socle sécurisé et fiable
 
-Statut : contrôles corrigés localement ; activation et exploitation distantes
-non vérifiées.
+Statut : migrations et fonctions Edge déployées le 1er octobre 2026 ; frontend
+et exploitation opérationnelle encore à vérifier.
 
 - Rôles administrateur déterminés par la base, sans confiance accordée au navigateur.
 - Profil privé séparé de l'annuaire visible par les utilisateurs connectés.
 - Coordonnées de covoiturage : le cloisonnement entre passagers et le filtrage
-  des demandes acceptées sont corrigés par la migration locale
-  `20260918015321_security_audit_hardening.sql`. Son déploiement reste à prouver.
+  des demandes acceptées sont corrigés par la migration
+  `20260918015321_security_audit_hardening.sql`, maintenant appliquée à
+  distance ; un E2E avec deux propriétaires et une concurrence PostgreSQL
+  réelle restent à réaliser.
 - Acceptation, refus et annulation des demandes traités de façon transactionnelle.
 - Documents placés dans des compartiments privés avec liens temporaires. Les
   documents explicitement conservés hors ligne restent liés au compte, expirent
@@ -20,8 +22,8 @@ non vérifiées.
   peut pas être apprise durant une coupure réseau réelle.
 - Formats autorisés, namespace par utilisateur, quota documentaire de 200 objets
   et 100 Mo, et taille maximale de 20 Mo imposés côté policy/SQL/interface ;
-  une queue de nettoyage est préparée, mais l'inventaire historique et le
-  worker de purge des orphelins restent à exécuter.
+  la queue et le worker de purge des orphelins sont déployés, mais l'inventaire
+  historique, le scheduler et les alertes restent à exécuter/configurer.
 - Tables News supprimées et ancien compartiment News rendu privé et inaccessible.
 - Droits anonymes retirés des tables applicatives et des fonctions sensibles.
 - Dépendances de production mises à jour.
@@ -53,8 +55,8 @@ Statut : première tranche réalisée.
 
 ## Lot 3 - Gestion des formations
 
-Statut : implémentation présente ; membres en consultation, contributeurs et
-administrateurs responsables du planning/reporting.
+Statut : migrations appliquées ; membres en consultation, contributeurs et
+administrateurs responsables du planning/reporting ; E2E distant restant.
 
 - Capacité maximale par session, modifiable par un responsable.
 - Les RPC historiques d'inscription/désinscription restent disponibles pour le
@@ -79,14 +81,14 @@ Critères d'acceptation :
 - coordonnées visibles uniquement par les responsables autorisés ;
 - toutes les modifications sensibles sont historisées.
 
-Ces mécanismes sont présents dans le code et testés partiellement en isolation ;
-leur application et leur comportement concurrent réel restent à vérifier sur
-une instance Supabase complète autorisée.
+Ces mécanismes sont présents dans le code, testés en isolation et appliqués sur
+le projet autorisé. Leur comportement concurrent réel et les autorisations de
+deux comptes synthétiques restent à vérifier sur l'instance.
 
 ## Lot 4 - Documents avancés
 
-Statut : présent et testé localement ; publication, inventaire et exploitation
-Storage distants non vérifiés.
+Statut : présent, testé localement et finaliseurs/worker publiés ; inventaire et
+exploitation Storage distants encore incomplets.
 
 - Métadonnées : catégorie, tags, version, auteur, date d'effet et date d'expiration.
 - Recherche plein texte et filtres.
@@ -109,13 +111,15 @@ restent des opérations administratives.
 Les migrations `20260920064930_remove_default_trainer_qualification.sql` et
 `20260920064931_restrict_email_destinations.sql` alignent respectivement la
 qualification formateur sans défaut et la confidentialité des destinataires
-opérationnels. Les journaux et données médicales doivent rester conservés dans
-les sauvegardes ; leur chiffrement, rétention et restauration restent à vérifier
-sur l'environnement hébergé.
+opérationnels ; elles sont appliquées à distance. Les journaux et données
+médicales doivent rester conservés dans les sauvegardes ; aucune sauvegarde
+exploitable n'est disponible sur l'offre actuelle, donc chiffrement, rétention
+et restauration restent à vérifier.
 
 ## Lot 5 - Rôles et administration
 
-Statut : partiellement implémenté localement ; état distant non vérifié.
+Statut : migrations et fonctions Edge appliquées ; réglages Auth Audit Logs et
+parcours authentifiés encore non vérifiés.
 
 - Rôles cumulatifs `membre`, `contributeur` et `administrateur`; les fonctions
   `RSFR`, `FOR INC` et `FOR BAT` restent des qualifications distinctes.
@@ -143,8 +147,8 @@ Statut : partiellement implémenté localement ; état distant non vérifié.
   VALID` pour préserver l'historique jusqu'à son inventaire.
 - La queue Storage possède maintenant un worker Edge à secret dédié, avec
   recontrôle de référence, retries et backoff (`20260919160000_...` et
-  `storage-cleanup-worker`). Son scheduler, ses alertes et son déploiement
-  restent à autoriser.
+  `storage-cleanup-worker`). Le worker est déployé ; son scheduler, ses alertes
+  et l'inventaire historique restent à configurer/exécuter.
 - Les PDF de main courante et de réparation passent par `store-form-pdf` et
   une approbation serveur à usage unique avant insertion métier
   (`20260919170000_form_pdf_server_finalization.sql`). Cette validation de
@@ -166,9 +170,9 @@ Statut : partiellement implémenté localement ; état distant non vérifié.
   valeur `default` explicite ; aucune clé de projet n'est choisie par ordre
   arbitraire.
 - Pagination Auth bornée côté Edge/client, quota email atomique par utilisateur
-  et coupe-circuit global de 200 revendications par heure préparés localement
-  (`20260919190200_global_form_email_rate_limit.sql`) ; l'exécution distante et
-  les seuils fournisseur restent à contrôler.
+  et coupe-circuit global de 200 revendications par heure appliqués par
+  `20260919190200_global_form_email_rate_limit.sql` ; les seuils fournisseur et
+  alertes Brevo restent à contrôler.
 - Les listes applicatives utilisent des pages de 100 avec un plafond explicite de
   1 000 lignes et les RPC de catalogue/formation ont des limites défensives via
   `20260919190000_query_response_bounds.sql`. Le catalogue au-delà de 200

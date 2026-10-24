@@ -1,4 +1,4 @@
-# Audit des entrées et des sorties — mise à jour du 20 septembre 2026
+# Audit des entrées et des sorties — mise à jour du 1er octobre 2026
 
 ## Règle de sécurité
 
@@ -43,22 +43,41 @@ Les caractères légitimes (accents, apostrophes, guillemets, `&`, `<`, `>`) res
 - La publication catalogue est alignée sur les rôles cumulatifs : `20260919200000_document_contributor_publish.sql` autorise les contributeurs à créer une ressource et à publier une nouvelle version après finalisation serveur ; la modification des métadonnées et la suppression restent réservées à l'administration.
 - La création de profil n'attribue plus `RSFR` implicitement : `20260920064930_remove_default_trainer_qualification.sql` et les normaliseurs frontend/Edge conservent `[]` jusqu'à une attribution administrative explicite. `20260920064931_restrict_email_destinations.sql` empêche les membres de lire les destinataires opérationnels ; `20260920065639_training_planning_member_view_only.sql` réserve les mutations de planning aux contributeurs et administrateurs.
 - Les fonctions Edge utilisent désormais une sélection de clé explicite : une variable legacy unique ou une valeur `default` dans le JSON nommé ; une configuration multi-projet sans clé `default` échoue fermement au lieu de choisir arbitrairement la première valeur.
-- Les six Edge Functions sensibles utilisent désormais une liste CORS d'origines autorisées avec refus 403 des origines inconnues ; le contrôle local est structurel (`cors-check.mjs`) et ne remplace pas un preflight sur le domaine déployé. Les messages d'erreur de l'interface passent par un normaliseur qui évite d'exposer SQL/PostgREST, URL ou corps fournisseur.
+- Les six Edge Functions sensibles utilisent désormais une liste CORS d'origines autorisées avec refus 403 des origines inconnues ; le contrôle local est structurel (`cors-check.mjs`) et les preflights distants du 1er octobre ont confirmé `204` pour la production et `403` pour localhost comme pour une origine inconnue. Les défauts localhost s'appliquent en l'absence d'allowlist configurée, quel que soit l'environnement ; le frontend Cloudflare et la politique runtime doivent être contrôlés séparément. Les messages d'erreur de l'interface passent par un normaliseur qui évite d'exposer SQL/PostgREST, URL ou corps fournisseur.
 - Les réponses Auth sont normalisées sans énumérer les comptes : une adresse non confirmée ne reçoit plus un message distinct d'un échec de connexion, et les écrans de connexion, récupération et réinitialisation repassent par `getUserFacingError`. Le comportement anti-abus et les messages exacts du fournisseur distant restent à vérifier.
-- Les URLs de confirmation et de récupération ne reprennent plus une origine arbitraire de navigateur : l’application utilise le domaine canonique `app.flashover78.com` ou les ports locaux explicitement autorisés, et refuse implicitement les previews inconnues. L’allowlist effectivement configurée dans Supabase reste à vérifier.
+- Les URLs de confirmation et de récupération ne reprennent plus une origine arbitraire de navigateur : l’application utilise le domaine canonique `app.flashover78.com` ou les ports locaux explicitement autorisés, et refuse implicitement les previews inconnues. Les noms des secrets d'allowlist sont maintenant présents à distance ; leur comportement Auth complet et les previews restent à vérifier.
 - Les collections PostgREST sont maintenant lues par pages de 100, avec un
   plafond de 1 000 lignes et une sonde qui refuse une troncature silencieuse ;
   les RPC de catalogue et de formation imposent également des limites serveur
   (`20260919190000_query_response_bounds.sql`). Le catalogue est défensivement
   limité à 200 lignes par appel ; une UX de curseur reste nécessaire pour un
   volume supérieur.
-- La purge Storage ne s'appuie plus uniquement sur le navigateur : `storage-cleanup-worker` réserve une file avec un secret distinct, recontrôle les références, supprime via le client service-role et applique un backoff borné en cas d'échec. Le scheduler, les alertes et l'inventaire historique restent des opérations de production.
+- La purge Storage ne s'appuie plus uniquement sur le navigateur : `storage-cleanup-worker` réserve une file avec un secret distinct, recontrôle les références, supprime via le client service-role et applique un backoff borné en cas d'échec. Le worker est déployé ; le scheduler, les alertes et l'inventaire historique restent des opérations de production.
 - La restitution d'un document mis en cache vérifie désormais, lorsque le navigateur est en ligne, l'identité Auth et la RPC serveur `require_active_session`; une session supprimée côté Auth ne suffit donc plus à conserver le cache si la révocation est observable. En mode réellement hors ligne, aucune révocation distante ne peut être apprise avant l'expiration locale.
 - Les octets des documents hors ligne sont chiffrés en AES-GCM avant Cache Storage ; la clé non exportable est liée à l'identifiant de compte dans IndexedDB et supprimée avec la cache à la déconnexion ou au changement de compte. Cette protection ne résiste pas à une XSS active sur le même origin et ne transforme pas le mode hors ligne en preuve de révocation distante.
 
+## État distant complémentaire — 1er octobre 2026
+
+Les sept fonctions Edge sont actives avec JWT obligatoire. Des requêtes
+synthétiques sans JWT ont reçu `401`; les six preflights CORS ont renvoyé
+`204` pour la production et `403` pour localhost comme pour une origine inconnue. Le worker
+réservé au scheduler renvoie `405` sur OPTIONS. Les migrations et les secrets
+nécessaires sont présents par nom sur le projet Supabase autorisé. Aucun appel
+email réel, compte réel ou contenu personnel n'a été utilisé. Ces sondes ne
+prouvent pas les autorisations d'un compte authentifié, les limites Brevo, le
+contenu des fichiers historiques, le scheduler, les alertes ou le frontend
+Cloudflare.
+
 ## Limites de la vérification
 
-Audit du code présent dans le dépôt, sans test d'intrusion du service distant et sans envoi d'email réel. Il ne prouve pas que les migrations et fonctions de production correspondent au dépôt. La validation métier, les limites de taille, l'autorisation/RLS, les fichiers téléchargés et les protections MFA sont des couches distinctes de l'encodage HTML et du paramétrage SQL. Une extension de fichier autorisée ne prouve pas l'innocuité du contenu du fichier. Les tests unitaires du helper ne constituent pas une exécution de bout en bout du fournisseur email.
+Audit du code présent dans le dépôt et sondes distantes non authentifiées, sans test
+d'intrusion ni envoi d'email réel. Il ne prouve pas l'exécution des parcours
+authentifiés, la configuration complète de production ni la restauration. La
+validation métier, les limites de taille, l'autorisation/RLS, les fichiers
+téléchargés et les protections MFA sont des couches distinctes de l'encodage
+HTML et du paramétrage SQL. Une extension de fichier autorisée ne prouve pas
+l'innocuité du contenu du fichier. Les tests unitaires du helper ne constituent
+pas une exécution de bout en bout du fournisseur email.
 
 Toute future sortie HTML doit encoder les textes ; tout futur lien libre doit autoriser explicitement les protocoles attendus. Ne jamais utiliser escapeHtml comme validateur d'URL ou de SQL. Les fonctions SQL futures doivent conserver les paramètres liés et éviter `EXECUTE` avec concaténation d'entrées.
 

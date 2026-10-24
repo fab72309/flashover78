@@ -203,6 +203,66 @@ test('document finalizer rejects ZIP package path traversal before Storage uploa
   assert.equal(f.calls().some(([kind]) => kind === 'upload'), false);
 });
 
+test('document finalizer rejects active ODT XML, external references and encoding bypasses', async () => {
+  const unsafeXml = [
+    '<content><draw:image xlink:href="https://example.invalid/tracker"/></content>',
+    '<content><draw:image xlink:href="&#104;ttps://example.invalid/tracker"/></content>',
+    '<content><draw:image xlink:href="//example.invalid/tracker"/></content>',
+    '<content><office:scripts><office:script>synthetic</office:script></office:scripts></content>',
+    '<content><alias:event-listeners/></content>',
+    '<content><draw:object xlink:href="Object1"/></content>',
+    '<!DOCTYPE content [<!ENTITY remote "https://example.invalid">]><content/>',
+    '<?xml version="1.0" encoding="UTF-16"?><content/>',
+    '<content xml:base="https://example.invalid"><draw:image xlink:href="local.png"/></content>',
+  ];
+  for (const xml of unsafeXml) {
+    const f = fixture();
+    const bytes = zipSync({ mimetype: new TextEncoder().encode('application/vnd.oasis.opendocument.text'), 'content.xml': new TextEncoder().encode(xml) });
+    const response = await f.request({ bucketId: 'resources', storagePath: `${USER_ID}/new/document.odt`, documentBase64: Buffer.from(bytes).toString('base64') });
+    assert.equal(response.status, 422, xml);
+    assert.equal(f.calls().some(([kind]) => kind === 'upload'), false);
+  }
+});
+
+test('document finalizer allows passive ODT with a packaged local image', async () => {
+  const f = fixture();
+  const bytes = zipSync({
+    mimetype: new TextEncoder().encode('application/vnd.oasis.opendocument.text'),
+    'content.xml': new TextEncoder().encode('<content><draw:image xlink:href="Pictures/local.png"/></content>'),
+    'Pictures/local.png': new Uint8Array([1, 2, 3]),
+  });
+  const response = await f.request({ bucketId: 'resources', storagePath: `${USER_ID}/new/document.odt`, documentBase64: Buffer.from(bytes).toString('base64') });
+  assert.equal(response.status, 200);
+});
+
+test('document finalizer rejects Unicode XML namespace aliases for active ODT parts', async () => {
+  for (const xml of [
+    '<content xmlns:é="urn:oasis:names:tc:opendocument:xmlns:script:1.0"><é:script>synthetic</é:script></content>',
+    '<content xmlns:文="urn:oasis:names:tc:opendocument:xmlns:office:1.0"><文:event-listeners/></content>',
+    '<content xmlns:é="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"><é:object/></content>',
+    '<content xmlns:é="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"><é:object-ole/></content>',
+    '<content xmlns:é="http://www.w3.org/1999/xlink"><image é:href="https://example.invalid/tracker"/></content>',
+    '<content xmlns:文="http://www.w3.org/1999/xlink"><image 文:href="&#104;ttps://example.invalid/tracker"/></content>',
+  ]) {
+    const f = fixture();
+    const bytes = zipSync({ mimetype: new TextEncoder().encode('application/vnd.oasis.opendocument.text'), 'content.xml': new TextEncoder().encode(xml) });
+    const response = await f.request({ bucketId: 'resources', storagePath: `${USER_ID}/new/unicode.odt`, documentBase64: Buffer.from(bytes).toString('base64') });
+    assert.equal(response.status, 422, xml);
+    assert.equal(f.calls().some(([kind]) => kind === 'upload'), false);
+  }
+});
+
+test('document finalizer preserves accented text and passive Unicode namespace aliases', async () => {
+  const f = fixture();
+  const bytes = zipSync({
+    mimetype: new TextEncoder().encode('application/vnd.oasis.opendocument.text'),
+    'content.xml': new TextEncoder().encode('<content xmlns:é="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:文="http://www.w3.org/1999/xlink"><é:p>Équipe entraînée à Évry : sécurité</é:p><image 文:href="Pictures/local.png"/></content>'),
+    'Pictures/local.png': new Uint8Array([1, 2, 3]),
+  });
+  const response = await f.request({ bucketId: 'resources', storagePath: `${USER_ID}/new/unicode-passive.odt`, documentBase64: Buffer.from(bytes).toString('base64') });
+  assert.equal(response.status, 200);
+});
+
 test('document finalizer rejects forged DOCX bytes before Storage upload', async () => {
   const f = fixture();
   const response = await f.request({

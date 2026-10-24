@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../utils/devAuth', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../utils/devAuth')>(),
+  isDevAuthBypassEnabled: true,
+}));
 import {
   cancelTrainingRegistration,
   listTrainingSessionSummaries,
