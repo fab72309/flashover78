@@ -10,9 +10,33 @@ const require = createRequire(import.meta.url);
 const pdf = await PDFDocument.create();
 pdf.addPage().drawText('synthetic catalogue document');
 const pdfBytes = await pdf.save();
+function pdfWithContentStreamMarker() {
+  const streamContents = '% /JS\n';
+  const objectBodies = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R >>\nendobj\n',
+    `4 0 obj\n<< /Length ${Buffer.byteLength(streamContents)} >>\nstream\n${streamContents}endstream\nendobj\n`,
+  ];
+  let source = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const objectBody of objectBodies) {
+    offsets.push(Buffer.byteLength(source));
+    source += objectBody;
+  }
+  const xrefOffset = Buffer.byteLength(source);
+  source += `xref\n0 ${objectBodies.length + 1}\n0000000000 65535 f \n`;
+  source += offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('');
+  source += `trailer\n<< /Size ${objectBodies.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return new TextEncoder().encode(source);
+}
 const docxBytes = zipSync({
   '[Content_Types].xml': new TextEncoder().encode('<Types/>'),
   'word/document.xml': new TextEncoder().encode('<document/>'),
+});
+const pptxBytes = zipSync({
+  '[Content_Types].xml': new TextEncoder().encode('<Types/>'),
+  'ppt/presentation.xml': new TextEncoder().encode('<presentation/>'),
 });
 
 const bundle = await build({
@@ -37,7 +61,9 @@ const bundle = await build({
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const PDF_BASE64 = Buffer.from(pdfBytes).toString('base64');
+const PDF_WITH_CONTENT_STREAM_MARKER_BASE64 = Buffer.from(pdfWithContentStreamMarker()).toString('base64');
 const DOCX_BASE64 = Buffer.from(docxBytes).toString('base64');
+const PPTX_BASE64 = Buffer.from(pptxBytes).toString('base64');
 
 function fixture({ contributor = true, approval = true, cleanupError = null } = {}) {
   let handler;
@@ -130,6 +156,18 @@ test('document finalizer validates PDF bytes and registers an approval', async (
   assert.ok(f.calls().some(([kind, name]) => kind === 'rpc' && name === 'register_document_upload_approval'));
 });
 
+test('document finalizer accepts PDF content streams containing action-looking bytes', async () => {
+  const f = fixture();
+  const response = await f.request({
+    bucketId: 'resources',
+    storagePath: `${USER_ID}/catalog/new/content-stream-marker.pdf`,
+    documentBase64: PDF_WITH_CONTENT_STREAM_MARKER_BASE64,
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.mimeType, 'application/pdf');
+});
+
 test('document finalizer accepts a structurally valid DOCX without trusting the MIME alone', async () => {
   const f = fixture();
   const response = await f.request({
@@ -153,6 +191,18 @@ test('document finalizer accepts a structurally valid DOCX without trusting the 
     documentBase64: Buffer.from(macroBytes).toString('base64'),
   });
   assert.equal(macroResponse.status, 422);
+});
+
+test('document finalizer accepts a structurally valid PPTX', async () => {
+  const f = fixture();
+  const response = await f.request({
+    bucketId: 'resources',
+    storagePath: `${USER_ID}/catalog/new/presentation.pptx`,
+    documentBase64: PPTX_BASE64,
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.mimeType, 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
 });
 
 test('document finalizer rejects new legacy OLE Office uploads before Storage', async () => {
