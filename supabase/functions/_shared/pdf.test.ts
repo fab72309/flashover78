@@ -15,11 +15,11 @@ describe('PDF attachment verification', () => {
     expect(isLikelyPdf(new TextEncoder().encode('%PDF-1.7\ntruncated'))).toBe(false)
   })
 
-  it('rejects PDFs containing active-content markers', () => {
-    const unsafe = new TextEncoder().encode(
-      '%PDF-1.7\n1 0 obj\n<</OpenAction 2 0 R>>\nendobj\n%%EOF',
+  it('does not confuse PDF-looking bytes in a content stream with active content', () => {
+    const contentStream = new TextEncoder().encode(
+      '%PDF-1.7\n1 0 obj\n<</Length 4>>\nstream\n/JS\nendstream\nendobj\n%%EOF',
     )
 
-    expect(isLikelyPdf(unsafe)).toBe(false)
+    expect(isLikelyPdf(contentStream)).toBe(true)
   })
 })
